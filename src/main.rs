@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 
 use arboard::Clipboard;
 use ratatui::crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
-    MouseButton, MouseEvent, MouseEventKind,
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
+    KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
@@ -1736,6 +1736,9 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> io::Result<()> {
+        if key.kind != KeyEventKind::Press {
+            return Ok(());
+        }
         if key.modifiers.contains(KeyModifiers::CONTROL)
             && !key.modifiers.contains(KeyModifiers::ALT)
             && matches!(key.code, KeyCode::Char('q') | KeyCode::Char('Q'))

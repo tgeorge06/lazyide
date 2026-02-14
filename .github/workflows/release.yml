@@ -55,7 +55,6 @@ jobs:
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/lazyide dist/
-          cp -r themes dist/
           cp README.md LICENSE dist/
           cd dist && tar czf ../${{ matrix.name }}.tar.gz *
 
@@ -64,7 +63,6 @@ jobs:
         run: |
           mkdir dist
           copy target\${{ matrix.target }}\release\lazyide.exe dist\
-          xcopy themes dist\themes\ /E /I
           copy README.md dist\
           copy LICENSE dist\
           cd dist && tar czf ..\${{ matrix.name }}.tar.gz *
