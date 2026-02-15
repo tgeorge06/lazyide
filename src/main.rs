@@ -4611,6 +4611,7 @@ fn draw(app: &mut App, frame: &mut Frame<'_>) {
         }
     }
 
+    frame.render_widget(Clear, inner);
     let lang = syntax_lang_for_path(app.open_path().map(|p| p.as_path()));
     let visible_rows = inner.height as usize;
     let has_tab = app.active_tab().is_some();
