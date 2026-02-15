@@ -4707,8 +4707,17 @@ fn draw(app: &mut App, frame: &mut Frame<'_>) {
             spans.push(Span::raw(" "));
         }
         spans.push(Span::raw(" "));
-        let hl = highlight_line(&lines_src[row], lang, &theme);
+        let display_line = lines_src[row].replace('\t', "    ");
+        let hl = highlight_line(&display_line, lang, &theme);
         spans.extend(hl.spans);
+        // Pad line to full width so stale characters from previous frame are overwritten
+        let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
+        if used < inner_w {
+            spans.push(Span::styled(
+                " ".repeat(inner_w - used),
+                Style::default().bg(theme.bg),
+            ));
+        }
         let hl = Line::from(spans);
         let hl = if diagnostics_ref.iter().any(|d| d.line == row + 1 && d.severity == "error") {
             hl.patch_style(Style::default().add_modifier(Modifier::UNDERLINED))
