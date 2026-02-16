@@ -19,7 +19,7 @@ Rust 2024 edition. No custom build scripts, no CI/CD.
 
 ## Architecture
 
-**Single-file monolith:** The entire application is in `src/main.rs` (~4,800 lines). Key sections:
+**Single-file monolith:** The entire application is in `src/main.rs` (~8,200 lines). Key sections:
 
 - **App struct** — Central application state: file tree, editor (tui-textarea), theme, LSP client, fs watcher, UI state
 - **Main event loop** (`run()`) — Polls LSP, fs changes, autosave, then draws UI and handles input
@@ -31,7 +31,9 @@ Rust 2024 edition. No custom build scripts, no CI/CD.
 
 **Focus model:** `Focus` enum switches between `Tree` and `Editor` panes. Input handling branches on focus state.
 
-**Key enums:** `Focus`, `SyntaxLang`, `TreeContextAction`, `EditorContextAction`
+**Key enums:** `Focus`, `SyntaxLang`, `TreeContextAction`, `EditorContextAction`, `KeyAction`
+
+- **Keybinding system** — `KeyAction` enum (~40 remappable actions), `KeyBind` (modifier+keycode with parse/display/match), `KeyBindings` (HashMap<KeyAction, Vec<KeyBind>> with defaults/lookup/conflict detection). Overrides loaded from `~/.config/lazyide/keybinds.json`. In-app keybind editor accessible from command palette
 
 ## External Tool Dependencies
 

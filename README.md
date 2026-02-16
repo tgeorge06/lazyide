@@ -131,6 +131,22 @@ This detects missing tools (rust-analyzer, ripgrep) and offers to install them a
 - Right-click in editor for edit menu (Copy, Cut, Paste, Select All)
 - Click fold gutter icons to toggle folds
 
+### Custom Keybindings
+
+All keyboard shortcuts can be remapped via `~/.config/lazyide/keybinds.json`. Only include the keys you want to override — missing actions keep their defaults.
+
+```json
+{
+  "save": "ctrl+s",
+  "redo": ["ctrl+shift+z", "ctrl+y"],
+  "fold_toggle": "ctrl+j"
+}
+```
+
+Values are a single string or array of strings. Keys are snake_case action names (e.g. `save`, `close_tab`, `go_to_definition`, `dup_line_down`).
+
+You can also open the **Keybind Editor** from the command palette (`Ctrl+P` > "Keybind Editor") to browse, remap, and reset keybindings interactively. Conflict detection warns you if a key is already in use.
+
 ### Unsaved safety
 
 - `Ctrl+Q` twice to quit with unsaved changes
