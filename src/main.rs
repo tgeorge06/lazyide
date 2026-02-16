@@ -1197,6 +1197,31 @@ impl App {
         }
     }
 
+    fn fold_all(&mut self) {
+        let Some(tab) = self.active_tab() else { return; };
+        let starts: Vec<usize> = tab.fold_ranges.iter().map(|fr| fr.start_line).collect();
+        let tab = &mut self.tabs[self.active_tab];
+        for start in starts {
+            tab.folded_starts.insert(start);
+        }
+        let count = tab.folded_starts.len();
+        self.rebuild_visible_rows();
+        self.sync_editor_scroll_guess();
+        self.set_status(format!("Folded {} blocks", count));
+    }
+
+    fn unfold_all(&mut self) {
+        let Some(tab) = self.active_tab() else { return; };
+        if tab.folded_starts.is_empty() {
+            self.set_status("No folded blocks");
+            return;
+        }
+        self.tabs[self.active_tab].folded_starts.clear();
+        self.rebuild_visible_rows();
+        self.sync_editor_scroll_guess();
+        self.set_status("Unfolded all blocks");
+    }
+
     fn ensure_lsp_for_path(&mut self, path: &Path) {
         let is_rust = path
             .extension()
@@ -1909,9 +1934,15 @@ impl App {
                 }
                 return Ok(());
             }
-            (_, KeyCode::Char('p'))
+            (_, KeyCode::Char('p')) | (_, KeyCode::Char('P'))
                 if key.modifiers.contains(KeyModifiers::CONTROL)
                     && key.modifiers.contains(KeyModifiers::SHIFT) =>
+            {
+                self.open_command_palette();
+                return Ok(());
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('e'))
+                if std::env::var_os("LAZYIDE_VHS").is_some() =>
             {
                 self.open_command_palette();
                 return Ok(());
@@ -2318,16 +2349,42 @@ impl App {
                 self.duplicate_current_line(true);
                 return Ok(());
             }
-            (_, KeyCode::Char('{'))
+            (_, KeyCode::Char('{')) | (_, KeyCode::Char('['))
                 if key.modifiers.contains(KeyModifiers::CONTROL)
                     && key.modifiers.contains(KeyModifiers::SHIFT) =>
             {
                 self.fold_current_block();
                 return Ok(());
             }
-            (_, KeyCode::Char('}'))
+            (_, KeyCode::Char('}')) | (_, KeyCode::Char(']'))
                 if key.modifiers.contains(KeyModifiers::CONTROL)
                     && key.modifiers.contains(KeyModifiers::SHIFT) =>
+            {
+                self.unfold_current_block();
+                return Ok(());
+            }
+            (_, KeyCode::Char('['))
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    && key.modifiers.contains(KeyModifiers::ALT) =>
+            {
+                self.fold_all();
+                return Ok(());
+            }
+            (_, KeyCode::Char(']'))
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    && key.modifiers.contains(KeyModifiers::ALT) =>
+            {
+                self.unfold_all();
+                return Ok(());
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('j'))
+                if std::env::var_os("LAZYIDE_VHS").is_some() =>
+            {
+                self.fold_current_block();
+                return Ok(());
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('k'))
+                if std::env::var_os("LAZYIDE_VHS").is_some() =>
             {
                 self.unfold_current_block();
                 return Ok(());
@@ -2480,6 +2537,37 @@ impl App {
                         return Ok(());
                     }
                 }
+            }
+            (KeyModifiers::NONE, KeyCode::PageDown) => {
+                self.page_down();
+                return Ok(());
+            }
+            (KeyModifiers::NONE, KeyCode::PageUp) => {
+                self.page_up();
+                return Ok(());
+            }
+            (_, KeyCode::Home) if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if let Some(tab) = self.active_tab_mut() {
+                    tab.editor.move_cursor(tui_textarea::CursorMove::Jump(0, 0));
+                }
+                self.sync_editor_scroll_guess();
+                self.set_status("Top of file");
+                return Ok(());
+            }
+            (_, KeyCode::End) if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if let Some(tab) = self.active_tab() {
+                    let last_row = tab.editor.lines().len().saturating_sub(1);
+                    let last_col = tab.editor.lines().last().map_or(0, |l| l.len());
+                    if let Some(tab) = self.active_tab_mut() {
+                        tab.editor.move_cursor(tui_textarea::CursorMove::Jump(
+                            last_row as u16,
+                            last_col as u16,
+                        ));
+                    }
+                }
+                self.sync_editor_scroll_guess();
+                self.set_status("End of file");
+                return Ok(());
             }
             _ => {}
         }
@@ -3204,6 +3292,50 @@ impl App {
         } else if cursor_visible >= tab.editor_scroll_row + inner_height {
             tab.editor_scroll_row = cursor_visible.saturating_sub(inner_height.saturating_sub(1));
         }
+    }
+
+    fn page_down(&mut self) {
+        let Some(tab) = self.active_tab() else { return; };
+        let inner_height = self.editor_rect.height.saturating_sub(2) as usize;
+        if inner_height == 0 { return; }
+        let (cursor_row, cursor_col) = tab.editor.cursor();
+        let visible_rows = &tab.visible_rows_map;
+        if visible_rows.is_empty() { return; }
+        let cursor_vis = self.visible_index_of_source_row(cursor_row);
+        let target_vis = (cursor_vis + inner_height).min(visible_rows.len().saturating_sub(1));
+        let target_row = visible_rows[target_vis];
+        let target_lines = self.active_tab().map_or(0, |t| {
+            t.editor.lines().get(target_row).map_or(0, |l| l.len())
+        });
+        let col = cursor_col.min(target_lines);
+        if let Some(tab) = self.active_tab_mut() {
+            tab.editor.move_cursor(tui_textarea::CursorMove::Jump(
+                target_row as u16, col as u16,
+            ));
+        }
+        self.sync_editor_scroll_guess();
+    }
+
+    fn page_up(&mut self) {
+        let Some(tab) = self.active_tab() else { return; };
+        let inner_height = self.editor_rect.height.saturating_sub(2) as usize;
+        if inner_height == 0 { return; }
+        let (cursor_row, cursor_col) = tab.editor.cursor();
+        let visible_rows = &tab.visible_rows_map;
+        if visible_rows.is_empty() { return; }
+        let cursor_vis = self.visible_index_of_source_row(cursor_row);
+        let target_vis = cursor_vis.saturating_sub(inner_height);
+        let target_row = visible_rows[target_vis];
+        let target_lines = self.active_tab().map_or(0, |t| {
+            t.editor.lines().get(target_row).map_or(0, |l| l.len())
+        });
+        let col = cursor_col.min(target_lines);
+        if let Some(tab) = self.active_tab_mut() {
+            tab.editor.move_cursor(tui_textarea::CursorMove::Jump(
+                target_row as u16, col as u16,
+            ));
+        }
+        self.sync_editor_scroll_guess();
     }
 
     fn editor_pos_from_mouse(&self, x: u16, y: u16) -> Option<(usize, usize)> {

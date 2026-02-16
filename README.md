@@ -4,6 +4,16 @@ Inspired by [lazygit](https://github.com/jesseduffield/lazygit) and [lazyssh](ht
 
 ![demo](demo.gif)
 
+## Features
+
+- **LSP** (rust-analyzer): diagnostics in gutter + status bar, completion, go-to-definition
+- **Syntax highlighting**: Rust, Python, JS/TS, Go, PHP, CSS/SCSS/SASS, HTML/XML, Shell, JSON/TOML/YAML, Markdown
+- **Code folding**: brace-based (Rust, JS, Go), indentation-based (Python), tag-based (HTML/XML)
+- **Bracket pair colorization**: `{}`, `()`, `[]` colored by nesting depth (3-color cycle per theme)
+- **27 themes**: loaded from `themes/*.json`, with live preview browser (`F5` > Theme). Falls back to built-in dark theme if none found
+- **Git branch**: shown in the top bar when inside a git repo
+- **Line numbers**: displayed in the editor gutter with diagnostic markers
+
 ## Install
 
 **macOS (Homebrew):**
@@ -83,7 +93,10 @@ This detects missing tools (rust-analyzer, ripgrep) and offers to install them a
 
 - `Ctrl+Space` or `Ctrl+.` LSP completion (ghost suggestion + Tab accept)
 - `Ctrl+D` go to definition (Rust LSP)
-- `Ctrl+Shift+{` / `}` fold / unfold current block
+- `Ctrl+Shift+[` / `]` fold / unfold current block
+- `Ctrl+Alt+[` / `]` fold all / unfold all
+- `PageUp` / `PageDown` scroll by page
+- `Ctrl+Home` / `Ctrl+End` go to start / end of file
 - `Shift+Alt+Down` / `Up` duplicate line
 - `Ctrl+Z` undo / `Ctrl+Y` redo
 - `Ctrl+G` / `Ctrl+Shift+G` find next / previous
@@ -127,16 +140,6 @@ This detects missing tools (rust-analyzer, ripgrep) and offers to install them a
 - Dirty buffers autosave every 2 seconds
 - Recovery prompt on reopen if autosave exists
 - Conflict prompt if file changes on disk while buffer is dirty: `R` reload, `K` keep local, `D` decide later
-
-## Features
-
-- **LSP** (rust-analyzer): diagnostics in gutter + status bar, completion, go-to-definition
-- **Syntax highlighting**: Rust, Python, JS/TS, Go, PHP, CSS/SCSS/SASS, HTML/XML, Shell, JSON/TOML/YAML, Markdown
-- **Code folding**: brace-based (Rust, JS, Go), indentation-based (Python), tag-based (HTML/XML)
-- **Bracket pair colorization**: `{}`, `()`, `[]` colored by nesting depth (3-color cycle per theme)
-- **27 themes**: loaded from `themes/*.json`, with live preview browser (`F5` > Theme). Falls back to built-in dark theme if none found
-- **Git branch**: shown in the top bar when inside a git repo
-- **Line numbers**: displayed in the editor gutter with diagnostic markers
 
 ## Contributing
 
