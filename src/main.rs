@@ -248,6 +248,21 @@ struct KeyBind {
 }
 
 impl KeyBind {
+    fn normalize_char_with_modifiers(code: KeyCode, modifiers: KeyModifiers) -> KeyCode {
+        match code {
+            KeyCode::Char(c) if modifiers.contains(KeyModifiers::CONTROL) => {
+                let u = c as u32;
+                if (1..=26).contains(&u) {
+                    let letter = (b'a' + (u as u8) - 1) as char;
+                    KeyCode::Char(letter)
+                } else {
+                    KeyCode::Char(c)
+                }
+            }
+            other => other,
+        }
+    }
+
     fn parse(s: &str) -> Option<KeyBind> {
         let parts: Vec<&str> = s.split('+').collect();
         if parts.is_empty() {
@@ -371,8 +386,14 @@ impl KeyBind {
     fn matches(&self, key: &KeyEvent) -> bool {
         // For letter keys, crossterm may set SHIFT bit for uppercase.
         // Normalize: strip SHIFT from both sides when comparing Char keys.
-        let (bind_mods, bind_code) = (self.modifiers, self.code);
-        let (mut ev_mods, ev_code) = (key.modifiers, key.code);
+        let (bind_mods, bind_code) = (
+            self.modifiers,
+            KeyBind::normalize_char_with_modifiers(self.code, self.modifiers),
+        );
+        let (mut ev_mods, ev_code) = (
+            key.modifiers,
+            KeyBind::normalize_char_with_modifiers(key.code, key.modifiers),
+        );
         // Normalize the event char to lowercase for comparison
         let ev_code_normalized = match ev_code {
             KeyCode::Char(c) => KeyCode::Char(c.to_ascii_lowercase()),
@@ -601,8 +622,10 @@ impl KeyBindings {
             if action == exclude_action {
                 continue;
             }
-            // Only check same scope
-            if action.is_global() != exclude_action.is_global() {
+            // Always warn if a global action uses this key (global keys are
+            // checked first and would shadow any editor binding).  For
+            // same-scope conflicts, always warn as well.
+            if !action.is_global() && action.is_global() != exclude_action.is_global() {
                 continue;
             }
             if let Some(binds) = self.map.get(&action) {
@@ -2759,7 +2782,7 @@ impl App {
 
     fn handle_search_results_key(&mut self, key: KeyEvent) -> io::Result<()> {
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc) | (_, KeyCode::Char('q')) => {
+            (_, KeyCode::Esc) => {
                 self.search_results_open = false;
                 self.set_status("Closed search results");
             }
@@ -2813,7 +2836,7 @@ impl App {
 
     fn handle_context_menu_key(&mut self, key: KeyEvent) -> io::Result<()> {
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc) | (_, KeyCode::Char('q')) => {
+            (_, KeyCode::Esc) => {
                 self.context_menu_open = false;
             }
             (_, KeyCode::Down) | (_, KeyCode::Char('j')) => {
@@ -3248,9 +3271,9 @@ impl App {
                     return Ok(());
                 }
                 _ => {
-                    // Put it back
-                    self.keybind_editor_conflict = Some((bind, for_action));
-                    return Ok(());
+                    // Let user immediately try a different key instead of getting stuck.
+                    self.keybind_editor_conflict = None;
+                    self.keybind_editor_recording = true;
                 }
             }
         }
@@ -3269,7 +3292,7 @@ impl App {
             };
             let bind = KeyBind {
                 modifiers: key.modifiers,
-                code: key.code,
+                code: KeyBind::normalize_char_with_modifiers(key.code, key.modifiers),
             };
             // Check for conflicts
             if let Some(conflict_action) = self.keybinds.find_conflict(&bind, action) {
@@ -3294,16 +3317,16 @@ impl App {
         }
 
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc) | (_, KeyCode::Char('q')) => {
+            (_, KeyCode::Esc) => {
                 self.keybind_editor_open = false;
                 self.keybind_editor_query.clear();
             }
-            (_, KeyCode::Down) | (_, KeyCode::Char('j')) => {
+            (_, KeyCode::Down) => {
                 if self.keybind_editor_index + 1 < self.keybind_editor_actions.len() {
                     self.keybind_editor_index += 1;
                 }
             }
-            (_, KeyCode::Up) | (_, KeyCode::Char('k')) => {
+            (_, KeyCode::Up) => {
                 if self.keybind_editor_index > 0 {
                     self.keybind_editor_index -= 1;
                 }
@@ -4039,9 +4062,7 @@ impl App {
     fn handle_help_key(&mut self, key: KeyEvent) -> io::Result<()> {
         let is_help_key = self.keybinds.lookup(&key, KeyScope::Global) == Some(KeyAction::Help);
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc)
-            | (_, KeyCode::Char('q'))
-            | (_, KeyCode::Char('?')) => {
+            (_, KeyCode::Esc) => {
                 self.help_open = false;
             }
             _ if is_help_key => {
@@ -4054,7 +4075,7 @@ impl App {
 
     fn handle_editor_context_menu_key(&mut self, key: KeyEvent) -> io::Result<()> {
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc) | (_, KeyCode::Char('q')) => {
+            (_, KeyCode::Esc) => {
                 self.editor_context_menu_open = false;
             }
             (_, KeyCode::Down) | (_, KeyCode::Char('j')) => {
@@ -4311,7 +4332,7 @@ impl App {
 
     fn handle_theme_browser_key(&mut self, key: KeyEvent) -> io::Result<()> {
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc) | (_, KeyCode::Char('q')) => {
+            (_, KeyCode::Esc) => {
                 self.active_theme_index = self.preview_revert_index;
                 self.theme_index = self.preview_revert_index;
                 self.theme_browser_open = false;
@@ -6214,6 +6235,21 @@ fn render_keybind_editor(app: &mut App, frame: &mut Frame<'_>) {
         lines.push(Line::from(Span::styled(
             ">> Press a key to bind... (Esc to cancel)",
             Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        )));
+    }
+    if let Some((bind, for_action)) = app.keybind_editor_conflict.as_ref() {
+        let other = app
+            .keybinds
+            .find_conflict(bind, *for_action)
+            .map(|a| a.label())
+            .unwrap_or("another action");
+        lines.push(Line::from(Span::styled(
+            format!(
+                "Conflict: {} is bound to {}. Enter overwrite | Esc cancel | any other key to retry",
+                bind.display(),
+                other
+            ),
+            Style::default().fg(theme.accent_secondary),
         )));
     }
     let paragraph = Paragraph::new(lines)
@@ -8205,6 +8241,14 @@ mod keybind_tests {
     }
 
     #[test]
+    fn test_keybind_matches_ctrl_control_char_event() {
+        let kb = KeyBind::parse("ctrl+b").unwrap();
+        // Some terminals report Ctrl+B as ASCII control char 0x02.
+        let event = KeyEvent::new(KeyCode::Char('\u{2}'), KeyModifiers::CONTROL);
+        assert!(kb.matches(&event));
+    }
+
+    #[test]
     fn test_keybind_no_match() {
         let kb = KeyBind::parse("ctrl+s").unwrap();
         let event = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL);
@@ -8268,6 +8312,19 @@ mod keybind_tests {
         let bind = KeyBind::parse("ctrl+shift+s").unwrap();
         // Runtime matching treats Ctrl+S and Ctrl+Shift+S as conflicting for Char keys.
         assert_eq!(kb.find_conflict(&bind, KeyAction::NewFile), Some(KeyAction::Save));
+    }
+
+    #[test]
+    fn test_find_conflict_with_control_char_bind() {
+        let kb = KeyBindings::defaults();
+        let bind = KeyBind {
+            modifiers: KeyModifiers::CONTROL,
+            code: KeyCode::Char('\u{2}'),
+        };
+        assert_eq!(
+            kb.find_conflict(&bind, KeyAction::Quit),
+            Some(KeyAction::ToggleFiles)
+        );
     }
 
     #[test]
