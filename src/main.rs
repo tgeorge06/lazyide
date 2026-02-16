@@ -1,5 +1,5 @@
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
-use std::collections::{HashSet, hash_map::DefaultHasher};
+use std::collections::{HashMap, HashSet, hash_map::DefaultHasher};
 use std::env;
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -14,7 +14,8 @@ use std::time::{Duration, Instant};
 use arboard::Clipboard;
 use ratatui::crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
-    KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    KeyModifiers, KeyboardEnhancementFlags, MouseButton, MouseEvent, MouseEventKind,
+    PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
@@ -36,6 +37,7 @@ use url::Url;
 const LOCAL_THEME_DIR: &str = "themes";
 static EMBEDDED_THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/themes");
 const STATE_FILE_REL: &str = "lazyide/state.json";
+const KEYBINDS_FILE_REL: &str = "lazyide/keybinds.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Focus {
@@ -59,6 +61,7 @@ enum PromptMode {
     FindInFile,
     FindInProject,
     ReplaceInFile { search: String },
+    GoToLine,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +76,740 @@ enum CommandAction {
     ToggleFiles,
     GotoDefinition,
     ReplaceInFile,
+    GoToLine,
+    Keybinds,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum KeyAction {
+    // Global
+    Save,
+    CloseTab,
+    Quit,
+    ToggleFiles,
+    CommandPalette,
+    QuickOpen,
+    Find,
+    FindReplace,
+    SearchFiles,
+    GoToLine,
+    Help,
+    NewFile,
+    RefreshTree,
+    PrevTab,
+    NextTab,
+    // Editor
+    GoToDefinition,
+    FoldToggle,
+    FoldAllToggle,
+    Fold,
+    Unfold,
+    FoldAll,
+    UnfoldAll,
+    FindNext,
+    FindPrev,
+    DupLineDown,
+    DupLineUp,
+    Dedent,
+    Completion,
+    Undo,
+    Redo,
+    SelectAll,
+    Copy,
+    Cut,
+    Paste,
+    ToggleComment,
+    PageDown,
+    PageUp,
+    GoToStart,
+    GoToEnd,
+}
+
+impl KeyAction {
+    fn is_global(self) -> bool {
+        matches!(
+            self,
+            KeyAction::Save
+                | KeyAction::CloseTab
+                | KeyAction::Quit
+                | KeyAction::ToggleFiles
+                | KeyAction::CommandPalette
+                | KeyAction::QuickOpen
+                | KeyAction::Find
+                | KeyAction::FindReplace
+                | KeyAction::SearchFiles
+                | KeyAction::GoToLine
+                | KeyAction::Help
+                | KeyAction::NewFile
+                | KeyAction::RefreshTree
+                | KeyAction::PrevTab
+                | KeyAction::NextTab
+        )
+    }
+
+    fn is_editor(self) -> bool {
+        !self.is_global()
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            KeyAction::Save => "Save",
+            KeyAction::CloseTab => "Close Tab",
+            KeyAction::Quit => "Quit",
+            KeyAction::ToggleFiles => "Toggle Files",
+            KeyAction::CommandPalette => "Command Palette",
+            KeyAction::QuickOpen => "Quick Open",
+            KeyAction::Find => "Find",
+            KeyAction::FindReplace => "Find & Replace",
+            KeyAction::SearchFiles => "Search Files",
+            KeyAction::GoToLine => "Go to Line",
+            KeyAction::Help => "Help",
+            KeyAction::NewFile => "New File",
+            KeyAction::RefreshTree => "Refresh Tree",
+            KeyAction::PrevTab => "Previous Tab",
+            KeyAction::NextTab => "Next Tab",
+            KeyAction::GoToDefinition => "Go to Definition",
+            KeyAction::FoldToggle => "Toggle Fold",
+            KeyAction::FoldAllToggle => "Toggle Fold All",
+            KeyAction::Fold => "Fold",
+            KeyAction::Unfold => "Unfold",
+            KeyAction::FoldAll => "Fold All",
+            KeyAction::UnfoldAll => "Unfold All",
+            KeyAction::FindNext => "Find Next",
+            KeyAction::FindPrev => "Find Previous",
+            KeyAction::DupLineDown => "Duplicate Line Down",
+            KeyAction::DupLineUp => "Duplicate Line Up",
+            KeyAction::Dedent => "Dedent",
+            KeyAction::Completion => "Completion",
+            KeyAction::Undo => "Undo",
+            KeyAction::Redo => "Redo",
+            KeyAction::SelectAll => "Select All",
+            KeyAction::Copy => "Copy",
+            KeyAction::Cut => "Cut",
+            KeyAction::Paste => "Paste",
+            KeyAction::ToggleComment => "Toggle Comment",
+            KeyAction::PageDown => "Page Down",
+            KeyAction::PageUp => "Page Up",
+            KeyAction::GoToStart => "Go to Start",
+            KeyAction::GoToEnd => "Go to End",
+        }
+    }
+
+    fn all() -> &'static [KeyAction] {
+        &[
+            KeyAction::Save,
+            KeyAction::CloseTab,
+            KeyAction::Quit,
+            KeyAction::ToggleFiles,
+            KeyAction::CommandPalette,
+            KeyAction::QuickOpen,
+            KeyAction::Find,
+            KeyAction::FindReplace,
+            KeyAction::SearchFiles,
+            KeyAction::GoToLine,
+            KeyAction::Help,
+            KeyAction::NewFile,
+            KeyAction::RefreshTree,
+            KeyAction::PrevTab,
+            KeyAction::NextTab,
+            KeyAction::GoToDefinition,
+            KeyAction::FoldToggle,
+            KeyAction::FoldAllToggle,
+            KeyAction::Fold,
+            KeyAction::Unfold,
+            KeyAction::FoldAll,
+            KeyAction::UnfoldAll,
+            KeyAction::FindNext,
+            KeyAction::FindPrev,
+            KeyAction::DupLineDown,
+            KeyAction::DupLineUp,
+            KeyAction::Dedent,
+            KeyAction::Completion,
+            KeyAction::Undo,
+            KeyAction::Redo,
+            KeyAction::SelectAll,
+            KeyAction::Copy,
+            KeyAction::Cut,
+            KeyAction::Paste,
+            KeyAction::ToggleComment,
+            KeyAction::PageDown,
+            KeyAction::PageUp,
+            KeyAction::GoToStart,
+            KeyAction::GoToEnd,
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct KeyBind {
+    modifiers: KeyModifiers,
+    code: KeyCode,
+}
+
+impl KeyBind {
+    fn normalize_char_with_modifiers(code: KeyCode, modifiers: KeyModifiers) -> KeyCode {
+        match code {
+            KeyCode::Char(c) if modifiers.contains(KeyModifiers::CONTROL) => {
+                let u = c as u32;
+                if (1..=26).contains(&u) {
+                    let letter = (b'a' + (u as u8) - 1) as char;
+                    KeyCode::Char(letter)
+                } else {
+                    KeyCode::Char(c)
+                }
+            }
+            other => other,
+        }
+    }
+
+    fn parse(s: &str) -> Option<KeyBind> {
+        let parts: Vec<&str> = s.split('+').collect();
+        if parts.is_empty() {
+            return None;
+        }
+        let mut modifiers = KeyModifiers::NONE;
+        for &part in &parts[..parts.len() - 1] {
+            match part.to_ascii_lowercase().as_str() {
+                "ctrl" => modifiers |= KeyModifiers::CONTROL,
+                "shift" => modifiers |= KeyModifiers::SHIFT,
+                "alt" => modifiers |= KeyModifiers::ALT,
+                _ => return None,
+            }
+        }
+        let key_str = parts.last()?;
+        let code = match key_str.to_ascii_lowercase().as_str() {
+            "a" => KeyCode::Char('a'),
+            "b" => KeyCode::Char('b'),
+            "c" => KeyCode::Char('c'),
+            "d" => KeyCode::Char('d'),
+            "e" => KeyCode::Char('e'),
+            "f" => KeyCode::Char('f'),
+            "g" => KeyCode::Char('g'),
+            "h" => KeyCode::Char('h'),
+            "i" => KeyCode::Char('i'),
+            "j" => KeyCode::Char('j'),
+            "k" => KeyCode::Char('k'),
+            "l" => KeyCode::Char('l'),
+            "m" => KeyCode::Char('m'),
+            "n" => KeyCode::Char('n'),
+            "o" => KeyCode::Char('o'),
+            "p" => KeyCode::Char('p'),
+            "q" => KeyCode::Char('q'),
+            "r" => KeyCode::Char('r'),
+            "s" => KeyCode::Char('s'),
+            "t" => KeyCode::Char('t'),
+            "u" => KeyCode::Char('u'),
+            "v" => KeyCode::Char('v'),
+            "w" => KeyCode::Char('w'),
+            "x" => KeyCode::Char('x'),
+            "y" => KeyCode::Char('y'),
+            "z" => KeyCode::Char('z'),
+            "/" => KeyCode::Char('/'),
+            "." => KeyCode::Char('.'),
+            " " | "space" => KeyCode::Char(' '),
+            "[" => KeyCode::Char('['),
+            "]" => KeyCode::Char(']'),
+            "{" => KeyCode::Char('{'),
+            "}" => KeyCode::Char('}'),
+            "esc" | "escape" => KeyCode::Esc,
+            "enter" | "return" => KeyCode::Enter,
+            "tab" => KeyCode::Tab,
+            "backtab" => KeyCode::BackTab,
+            "backspace" => KeyCode::Backspace,
+            "delete" | "del" => KeyCode::Delete,
+            "up" => KeyCode::Up,
+            "down" => KeyCode::Down,
+            "left" => KeyCode::Left,
+            "right" => KeyCode::Right,
+            "home" => KeyCode::Home,
+            "end" => KeyCode::End,
+            "pageup" => KeyCode::PageUp,
+            "pagedown" => KeyCode::PageDown,
+            "f1" => KeyCode::F(1),
+            "f2" => KeyCode::F(2),
+            "f3" => KeyCode::F(3),
+            "f4" => KeyCode::F(4),
+            "f5" => KeyCode::F(5),
+            "f6" => KeyCode::F(6),
+            "f7" => KeyCode::F(7),
+            "f8" => KeyCode::F(8),
+            "f9" => KeyCode::F(9),
+            "f10" => KeyCode::F(10),
+            "f11" => KeyCode::F(11),
+            "f12" => KeyCode::F(12),
+            _ => return None,
+        };
+        Some(KeyBind { modifiers, code })
+    }
+
+    fn display(&self) -> String {
+        let mut parts = Vec::new();
+        if self.modifiers.contains(KeyModifiers::CONTROL) {
+            parts.push("Ctrl".to_string());
+        }
+        if self.modifiers.contains(KeyModifiers::SHIFT) {
+            parts.push("Shift".to_string());
+        }
+        if self.modifiers.contains(KeyModifiers::ALT) {
+            parts.push("Alt".to_string());
+        }
+        let key_name = match self.code {
+            KeyCode::Char(c) => {
+                if c == ' ' {
+                    "Space".to_string()
+                } else {
+                    c.to_ascii_uppercase().to_string()
+                }
+            }
+            KeyCode::F(n) => format!("F{n}"),
+            KeyCode::Esc => "Esc".to_string(),
+            KeyCode::Enter => "Enter".to_string(),
+            KeyCode::Tab => "Tab".to_string(),
+            KeyCode::BackTab => "BackTab".to_string(),
+            KeyCode::Backspace => "Backspace".to_string(),
+            KeyCode::Delete => "Delete".to_string(),
+            KeyCode::Up => "Up".to_string(),
+            KeyCode::Down => "Down".to_string(),
+            KeyCode::Left => "Left".to_string(),
+            KeyCode::Right => "Right".to_string(),
+            KeyCode::Home => "Home".to_string(),
+            KeyCode::End => "End".to_string(),
+            KeyCode::PageUp => "PageUp".to_string(),
+            KeyCode::PageDown => "PageDown".to_string(),
+            _ => "?".to_string(),
+        };
+        parts.push(key_name);
+        parts.join("+")
+    }
+
+    fn matches(&self, key: &KeyEvent) -> bool {
+        // For letter keys, crossterm may set SHIFT bit for uppercase.
+        // Normalize: strip SHIFT from both sides when comparing Char keys.
+        let (bind_mods, bind_code) = (
+            self.modifiers,
+            KeyBind::normalize_char_with_modifiers(self.code, self.modifiers),
+        );
+        let (mut ev_mods, ev_code) = (
+            key.modifiers,
+            KeyBind::normalize_char_with_modifiers(key.code, key.modifiers),
+        );
+        // Normalize the event char to lowercase for comparison
+        let ev_code_normalized = match ev_code {
+            KeyCode::Char(c) => KeyCode::Char(c.to_ascii_lowercase()),
+            other => other,
+        };
+        let bind_code_normalized = match bind_code {
+            KeyCode::Char(c) => KeyCode::Char(c.to_ascii_lowercase()),
+            other => other,
+        };
+        // For Char keys, ignore SHIFT flag since we normalize case
+        if matches!(ev_code, KeyCode::Char(_)) {
+            ev_mods -= KeyModifiers::SHIFT;
+        }
+        let mut bind_mods_cmp = bind_mods;
+        if matches!(bind_code, KeyCode::Char(_)) {
+            bind_mods_cmp -= KeyModifiers::SHIFT;
+        }
+        // Handle Shift+BackTab special case: crossterm sends BackTab when Shift+Tab
+        if bind_code == KeyCode::BackTab && ev_code == KeyCode::BackTab {
+            // BackTab inherently means Shift+Tab, so ignore SHIFT in mods
+            let ev_no_shift = ev_mods - KeyModifiers::SHIFT;
+            let bind_no_shift = bind_mods - KeyModifiers::SHIFT;
+            return ev_no_shift == bind_no_shift;
+        }
+        // For bracket chars with Shift (e.g. Ctrl+Shift+[), crossterm may report
+        // the shifted char ('{') instead of '['. Check if binding uses Shift+char
+        // and compare against the shifted variant.
+        if bind_mods.contains(KeyModifiers::SHIFT) && matches!(bind_code, KeyCode::Char(_)) {
+            let shifted = match bind_code {
+                KeyCode::Char('[') => Some(KeyCode::Char('{')),
+                KeyCode::Char(']') => Some(KeyCode::Char('}')),
+                _ => None,
+            };
+            if let Some(shifted_code) = shifted {
+                let shifted_normalized = match shifted_code {
+                    KeyCode::Char(c) => KeyCode::Char(c.to_ascii_lowercase()),
+                    other => other,
+                };
+                if ev_code_normalized == shifted_normalized {
+                    let ev_no_shift = ev_mods - KeyModifiers::SHIFT;
+                    let bind_no_shift = bind_mods - KeyModifiers::SHIFT;
+                    return ev_no_shift == bind_no_shift;
+                }
+            }
+        }
+        ev_code_normalized == bind_code_normalized && ev_mods == bind_mods_cmp
+    }
+
+    fn conflicts_with(&self, other: &KeyBind) -> bool {
+        self.matches(&KeyEvent::new(other.code, other.modifiers))
+            || other.matches(&KeyEvent::new(self.code, self.modifiers))
+    }
+
+    fn to_string_config(&self) -> String {
+        let key = match self.code {
+            KeyCode::Char(c) => {
+                if c == ' ' {
+                    "space".to_string()
+                } else {
+                    c.to_ascii_lowercase().to_string()
+                }
+            }
+            KeyCode::F(n) => format!("f{n}"),
+            KeyCode::Esc => "esc".to_string(),
+            KeyCode::Enter => "enter".to_string(),
+            KeyCode::Tab => "tab".to_string(),
+            KeyCode::BackTab => "backtab".to_string(),
+            KeyCode::Backspace => "backspace".to_string(),
+            KeyCode::Delete => "delete".to_string(),
+            KeyCode::Up => "up".to_string(),
+            KeyCode::Down => "down".to_string(),
+            KeyCode::Left => "left".to_string(),
+            KeyCode::Right => "right".to_string(),
+            KeyCode::Home => "home".to_string(),
+            KeyCode::End => "end".to_string(),
+            KeyCode::PageUp => "pageup".to_string(),
+            KeyCode::PageDown => "pagedown".to_string(),
+            _ => "?".to_string(),
+        };
+        let mut result = Vec::new();
+        if self.modifiers.contains(KeyModifiers::CONTROL) {
+            result.push("ctrl".to_string());
+        }
+        if self.modifiers.contains(KeyModifiers::SHIFT) {
+            result.push("shift".to_string());
+        }
+        if self.modifiers.contains(KeyModifiers::ALT) {
+            result.push("alt".to_string());
+        }
+        result.push(key);
+        result.join("+")
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeyScope {
+    Global,
+    Editor,
+}
+
+#[derive(Debug, Clone)]
+struct KeyBindings {
+    map: HashMap<KeyAction, Vec<KeyBind>>,
+}
+
+impl KeyBindings {
+    fn defaults() -> Self {
+        let mut map: HashMap<KeyAction, Vec<KeyBind>> = HashMap::new();
+        let mut bind = |action: KeyAction, s: &str| {
+            map.entry(action)
+                .or_default()
+                .push(KeyBind::parse(s).expect("invalid default keybind"));
+        };
+
+        // Global
+        bind(KeyAction::Save, "ctrl+s");
+        bind(KeyAction::CloseTab, "ctrl+w");
+        bind(KeyAction::Quit, "ctrl+q");
+        bind(KeyAction::ToggleFiles, "ctrl+b");
+        bind(KeyAction::CommandPalette, "ctrl+p");
+        bind(KeyAction::CommandPalette, "ctrl+shift+p");
+        bind(KeyAction::QuickOpen, "ctrl+o");
+        bind(KeyAction::Find, "ctrl+f");
+        bind(KeyAction::FindReplace, "ctrl+h");
+        bind(KeyAction::SearchFiles, "ctrl+shift+f");
+        bind(KeyAction::Help, "f4");
+        bind(KeyAction::NewFile, "ctrl+n");
+        bind(KeyAction::RefreshTree, "ctrl+r");
+        bind(KeyAction::PrevTab, "f1");
+        bind(KeyAction::NextTab, "f2");
+
+        // Editor
+        bind(KeyAction::GoToDefinition, "ctrl+d");
+        bind(KeyAction::GoToDefinition, "ctrl+alt+d");
+        bind(KeyAction::FoldToggle, "ctrl+j");
+        bind(KeyAction::FoldAllToggle, "ctrl+u");
+        bind(KeyAction::Fold, "ctrl+shift+[");
+        bind(KeyAction::Unfold, "ctrl+shift+]");
+        bind(KeyAction::FoldAll, "ctrl+alt+[");
+        bind(KeyAction::UnfoldAll, "ctrl+alt+]");
+        bind(KeyAction::FindNext, "f3");
+        bind(KeyAction::FindPrev, "shift+f3");
+        bind(KeyAction::DupLineDown, "shift+alt+down");
+        bind(KeyAction::DupLineUp, "shift+alt+up");
+        bind(KeyAction::Dedent, "shift+backtab");
+        bind(KeyAction::Completion, "ctrl+space");
+        bind(KeyAction::Completion, "ctrl+.");
+        bind(KeyAction::GoToLine, "ctrl+g");
+        bind(KeyAction::ToggleComment, "ctrl+/");
+        bind(KeyAction::Undo, "ctrl+z");
+        bind(KeyAction::Redo, "ctrl+shift+z");
+        bind(KeyAction::Redo, "ctrl+y");
+        bind(KeyAction::SelectAll, "ctrl+a");
+        bind(KeyAction::Copy, "ctrl+c");
+        bind(KeyAction::Cut, "ctrl+x");
+        bind(KeyAction::Paste, "ctrl+v");
+        bind(KeyAction::PageDown, "pagedown");
+        bind(KeyAction::PageUp, "pageup");
+        bind(KeyAction::GoToStart, "ctrl+home");
+        bind(KeyAction::GoToEnd, "ctrl+end");
+
+        KeyBindings { map }
+    }
+
+    fn lookup(&self, key: &KeyEvent, scope: KeyScope) -> Option<KeyAction> {
+        for action in KeyAction::all().iter().copied() {
+            let in_scope = match scope {
+                KeyScope::Global => action.is_global(),
+                KeyScope::Editor => action.is_editor(),
+            };
+            if !in_scope {
+                continue;
+            }
+            if let Some(binds) = self.map.get(&action) {
+                for bind in binds {
+                    if bind.matches(key) {
+                        return Some(action);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn display_for(&self, action: KeyAction) -> String {
+        self.map
+            .get(&action)
+            .and_then(|v| v.first())
+            .map(|b| b.display())
+            .unwrap_or_else(|| "unbound".to_string())
+    }
+
+    #[cfg(test)]
+    fn set(&mut self, action: KeyAction, binds: Vec<KeyBind>) {
+        self.map.insert(action, binds);
+    }
+
+    #[cfg(test)]
+    fn conflicts(&self) -> Vec<(KeyBind, KeyAction, KeyAction)> {
+        let mut result = Vec::new();
+        let actions: Vec<_> = KeyAction::all().to_vec();
+        for i in 0..actions.len() {
+            for j in (i + 1)..actions.len() {
+                let a1 = actions[i];
+                let a2 = actions[j];
+                // Only check conflicts within the same scope
+                if a1.is_global() != a2.is_global() {
+                    continue;
+                }
+                if let (Some(binds1), Some(binds2)) = (self.map.get(&a1), self.map.get(&a2)) {
+                    for b1 in binds1 {
+                        for b2 in binds2 {
+                            if b1.conflicts_with(b2) {
+                                result.push((b1.clone(), a1, a2));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        result
+    }
+
+    fn find_conflict(&self, bind: &KeyBind, exclude_action: KeyAction) -> Option<KeyAction> {
+        for action in KeyAction::all().iter().copied() {
+            if action == exclude_action {
+                continue;
+            }
+            // Always warn if a global action uses this key (global keys are
+            // checked first and would shadow any editor binding).  For
+            // same-scope conflicts, always warn as well.
+            if !action.is_global() && action.is_global() != exclude_action.is_global() {
+                continue;
+            }
+            if let Some(binds) = self.map.get(&action) {
+                for b in binds {
+                    if b.conflicts_with(bind) {
+                        return Some(action);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn remove_bind_from(&mut self, action: KeyAction, bind: &KeyBind) {
+        if let Some(binds) = self.map.get_mut(&action) {
+            binds.retain(|b| !b.conflicts_with(bind));
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum SingleOrVec {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+fn keybinds_file_path() -> Option<PathBuf> {
+    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+        if !xdg.is_empty() {
+            return Some(PathBuf::from(xdg).join(KEYBINDS_FILE_REL));
+        }
+    }
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        if !appdata.is_empty() {
+            return Some(PathBuf::from(appdata).join(KEYBINDS_FILE_REL));
+        }
+    }
+    std::env::var("HOME")
+        .ok()
+        .map(|home| PathBuf::from(home).join(".config").join(KEYBINDS_FILE_REL))
+}
+
+fn parse_key_action_name(name: &str) -> Option<KeyAction> {
+    serde_json::from_value::<KeyAction>(serde_json::Value::String(name.to_string())).ok()
+}
+
+fn apply_keybinding_overrides(
+    kb: &mut KeyBindings,
+    overrides: HashMap<String, SingleOrVec>,
+    source: &str,
+) {
+    for (action_name, val) in overrides {
+        let Some(action) = parse_key_action_name(&action_name) else {
+            eprintln!("lazyide: unknown key action '{action_name}' in {source}");
+            continue;
+        };
+        let strings = match val {
+            SingleOrVec::Single(s) => vec![s],
+            SingleOrVec::Multiple(v) => v,
+        };
+        if strings.is_empty() {
+            // Explicitly unbound action (e.g. "save": [])
+            kb.map.insert(action, Vec::new());
+            continue;
+        }
+        let mut binds = Vec::new();
+        let mut invalid = Vec::new();
+        for s in strings {
+            if let Some(parsed) = KeyBind::parse(&s) {
+                binds.push(parsed);
+            } else {
+                invalid.push(s);
+            }
+        }
+        if !invalid.is_empty() {
+            eprintln!(
+                "lazyide: invalid keybind(s) for '{action_name}' in {source}: {}",
+                invalid.join(", ")
+            );
+        }
+        if !binds.is_empty() {
+            kb.map.insert(action, binds);
+        }
+    }
+}
+
+fn parse_override_entry(
+    action_name: &str,
+    raw: serde_json::Value,
+    source: &str,
+) -> Option<(String, SingleOrVec)> {
+    match raw {
+        serde_json::Value::String(s) => Some((action_name.to_string(), SingleOrVec::Single(s))),
+        serde_json::Value::Array(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                if let serde_json::Value::String(s) = item {
+                    out.push(s);
+                } else {
+                    eprintln!(
+                        "lazyide: invalid keybind list item for '{action_name}' in {source}: expected string"
+                    );
+                    return None;
+                }
+            }
+            Some((action_name.to_string(), SingleOrVec::Multiple(out)))
+        }
+        _ => {
+            eprintln!(
+                "lazyide: invalid keybind value type for '{action_name}' in {source}: expected string or array of strings"
+            );
+            None
+        }
+    }
+}
+
+fn selected_action(actions: &[KeyAction], index: usize) -> Option<KeyAction> {
+    actions.get(index).copied()
+}
+
+fn load_keybindings() -> KeyBindings {
+    let mut kb = KeyBindings::defaults();
+    let Some(path) = keybinds_file_path() else {
+        return kb;
+    };
+    let Ok(raw) = fs::read_to_string(&path) else {
+        return kb;
+    };
+    let source = path.display().to_string();
+    let Ok(root) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        eprintln!("lazyide: invalid keybinds json in {source}");
+        return kb;
+    };
+    let Some(obj) = root.as_object() else {
+        eprintln!("lazyide: invalid keybinds json in {source}: expected object");
+        return kb;
+    };
+    let mut overrides: HashMap<String, SingleOrVec> = HashMap::new();
+    for (action_name, raw_val) in obj {
+        if let Some((k, v)) = parse_override_entry(action_name, raw_val.clone(), &source) {
+            overrides.insert(k, v);
+        }
+    }
+    apply_keybinding_overrides(&mut kb, overrides, &source);
+    kb
+}
+
+fn save_keybindings(current: &KeyBindings) -> io::Result<()> {
+    let Some(path) = keybinds_file_path() else {
+        return Ok(());
+    };
+    let defaults = KeyBindings::defaults();
+    let mut overrides: HashMap<String, serde_json::Value> = HashMap::new();
+    for action in KeyAction::all() {
+        let current_binds = current.map.get(action).cloned().unwrap_or_default();
+        let default_binds = defaults.map.get(action).cloned().unwrap_or_default();
+        if current_binds != default_binds {
+            let action_name =
+                serde_json::to_value(action).unwrap_or(serde_json::Value::Null);
+            let action_str = action_name.as_str().unwrap_or("unknown").to_string();
+            let bind_strs: Vec<String> =
+                current_binds.iter().map(|b| b.to_string_config()).collect();
+            let val = if bind_strs.len() == 1 {
+                serde_json::Value::String(bind_strs.into_iter().next().unwrap())
+            } else {
+                serde_json::Value::Array(
+                    bind_strs.into_iter().map(serde_json::Value::String).collect(),
+                )
+            };
+            overrides.insert(action_str, val);
+        }
+    }
+    if overrides.is_empty() {
+        // No overrides; remove file if it exists
+        let _ = fs::remove_file(&path);
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let raw = serde_json::to_string_pretty(&overrides)
+        .map_err(|e| io::Error::other(format!("serialize keybinds: {e}")))?;
+    fs::write(path, raw)
 }
 
 #[derive(Debug, Clone)]
@@ -120,6 +857,7 @@ struct Theme {
     fg_muted: Color,
     border: Color,
     accent: Color,
+    accent_secondary: Color,
     selection: Color,
     comment: Color,
     syntax_string: Color,
@@ -151,6 +889,8 @@ struct ThemeColors {
     foreground_muted: String,
     border: String,
     accent: String,
+    #[serde(default, rename = "accentSecondary")]
+    accent_secondary: Option<String>,
     selection: String,
     #[serde(default)]
     yellow: Option<String>,
@@ -308,6 +1048,14 @@ struct App {
     autosave_last_write: Instant,
     replace_after_find: bool,
     git_branch: Option<String>,
+    enhanced_keys: bool,
+    keybinds: KeyBindings,
+    keybind_editor_open: bool,
+    keybind_editor_index: usize,
+    keybind_editor_recording: bool,
+    keybind_editor_query: String,
+    keybind_editor_conflict: Option<(KeyBind, KeyAction)>,
+    keybind_editor_actions: Vec<KeyAction>,
 }
 
 impl LspClient {
@@ -573,6 +1321,14 @@ impl App {
             autosave_last_write: Instant::now(),
             replace_after_find: false,
             git_branch: None,
+            enhanced_keys: false,
+            keybinds: load_keybindings(),
+            keybind_editor_open: false,
+            keybind_editor_index: 0,
+            keybind_editor_recording: false,
+            keybind_editor_query: String::new(),
+            keybind_editor_conflict: None,
+            keybind_editor_actions: KeyAction::all().to_vec(),
         };
         app.git_branch = detect_git_branch(&app.root);
         app.restore_persisted_state();
@@ -786,6 +1542,8 @@ impl App {
             CommandAction::ToggleFiles,
             CommandAction::GotoDefinition,
             CommandAction::ReplaceInFile,
+            CommandAction::GoToLine,
+            CommandAction::Keybinds,
         ];
         let q = self.menu_query.to_ascii_lowercase();
         self.menu_results = all
@@ -855,6 +1613,21 @@ impl App {
                     mode: PromptMode::FindInFile,
                 });
                 self.replace_after_find = true;
+            }
+            CommandAction::GoToLine => {
+                self.prompt = Some(PromptState {
+                    title: "Go to line".to_string(),
+                    value: String::new(),
+                    mode: PromptMode::GoToLine,
+                });
+            }
+            CommandAction::Keybinds => {
+                self.keybind_editor_open = true;
+                self.keybind_editor_index = 0;
+                self.keybind_editor_recording = false;
+                self.keybind_editor_query.clear();
+                self.keybind_editor_conflict = None;
+                self.refresh_keybind_editor_actions();
             }
         }
         Ok(())
@@ -1194,6 +1967,60 @@ impl App {
             self.set_status("Unfolded block");
         } else {
             self.set_status("No folded block at cursor");
+        }
+    }
+
+    fn fold_all(&mut self) {
+        let Some(tab) = self.active_tab() else { return; };
+        let starts: Vec<usize> = tab.fold_ranges.iter().map(|fr| fr.start_line).collect();
+        let tab = &mut self.tabs[self.active_tab];
+        for start in starts {
+            tab.folded_starts.insert(start);
+        }
+        let count = tab.folded_starts.len();
+        self.rebuild_visible_rows();
+        self.sync_editor_scroll_guess();
+        self.set_status(format!("Folded {} blocks", count));
+    }
+
+    fn unfold_all(&mut self) {
+        let Some(tab) = self.active_tab() else { return; };
+        if tab.folded_starts.is_empty() {
+            self.set_status("No folded blocks");
+            return;
+        }
+        self.tabs[self.active_tab].folded_starts.clear();
+        self.rebuild_visible_rows();
+        self.sync_editor_scroll_guess();
+        self.set_status("Unfolded all blocks");
+    }
+
+    fn toggle_fold_at_cursor(&mut self) {
+        let Some(tab) = self.active_tab() else { return; };
+        let (cursor_row, _) = tab.editor.cursor();
+        // Check if cursor is on/in a folded block
+        let mut is_folded = false;
+        for &start in &tab.folded_starts {
+            if let Some(fr) = tab.fold_ranges.iter().find(|fr| fr.start_line == start) {
+                if fr.start_line == cursor_row || (fr.start_line <= cursor_row && cursor_row <= fr.end_line) {
+                    is_folded = true;
+                    break;
+                }
+            }
+        }
+        if is_folded {
+            self.unfold_current_block();
+        } else {
+            self.fold_current_block();
+        }
+    }
+
+    fn toggle_fold_all(&mut self) {
+        let Some(tab) = self.active_tab() else { return; };
+        if tab.folded_starts.is_empty() {
+            self.fold_all();
+        } else {
+            self.unfold_all();
         }
     }
 
@@ -1784,26 +2611,10 @@ impl App {
         if key.kind != KeyEventKind::Press {
             return Ok(());
         }
-        if key.modifiers.contains(KeyModifiers::CONTROL)
-            && !key.modifiers.contains(KeyModifiers::ALT)
-            && matches!(key.code, KeyCode::Char('q') | KeyCode::Char('Q'))
-        {
-            if self.any_tab_dirty() {
-                if matches!(self.pending, PendingAction::Quit) {
-                    self.quit = true;
-                } else {
-                    self.pending = PendingAction::Quit;
-                    self.set_status(format!(
-                        "Unsaved changes. Press {}+Q again to quit.",
-                        primary_mod_label()
-                    ));
-                }
-            } else {
-                self.quit = true;
-            }
-            return Ok(());
-        }
 
+        if self.keybind_editor_open {
+            return self.handle_keybind_editor_key(key);
+        }
         if self.file_picker_open {
             return self.handle_file_picker_key(key);
         }
@@ -1842,122 +2653,13 @@ impl App {
             return Ok(());
         }
 
+        // Global keybind lookup
+        if let Some(action) = self.keybinds.lookup(&key, KeyScope::Global) {
+            return self.run_key_action(action);
+        }
+
+        // Non-remappable keys
         match (key.modifiers, key.code) {
-            (KeyModifiers::NONE, KeyCode::F(1)) => {
-                // Previous tab
-                if !self.tabs.is_empty() {
-                    let prev = if self.active_tab == 0 { self.tabs.len() - 1 } else { self.active_tab - 1 };
-                    self.switch_to_tab(prev);
-                }
-                return Ok(());
-            }
-            (KeyModifiers::NONE, KeyCode::F(2)) => {
-                // Next tab
-                if !self.tabs.is_empty() {
-                    let next = (self.active_tab + 1) % self.tabs.len();
-                    self.switch_to_tab(next);
-                }
-                return Ok(());
-            }
-            (KeyModifiers::NONE, KeyCode::F(3)) => {
-                self.files_view_open = !self.files_view_open;
-                if !self.files_view_open {
-                    self.focus = Focus::Editor;
-                    self.set_status("Files view hidden");
-                } else {
-                    self.set_status("Files view shown");
-                }
-                return Ok(());
-            }
-            (KeyModifiers::NONE, KeyCode::F(5)) => {
-                self.open_command_palette();
-                return Ok(());
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
-                if self.focus == Focus::Editor {
-                    self.request_lsp_definition();
-                }
-                return Ok(());
-            }
-            (_, KeyCode::Char('d')) | (_, KeyCode::Char('D'))
-                if key.modifiers.contains(KeyModifiers::CONTROL)
-                    && key.modifiers.contains(KeyModifiers::ALT) =>
-            {
-                if self.focus == Focus::Editor {
-                    self.request_lsp_definition();
-                }
-                return Ok(());
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('b')) => {
-                self.files_view_open = !self.files_view_open;
-                if !self.files_view_open {
-                    self.focus = Focus::Editor;
-                    self.set_status("Files view hidden");
-                } else {
-                    self.set_status("Files view shown");
-                }
-                return Ok(());
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('w')) => {
-                if !self.tabs.is_empty() {
-                    if self.is_dirty() {
-                        self.pending = PendingAction::ClosePrompt;
-                        self.set_status("Unsaved changes: Enter save+close | Esc discard | C cancel");
-                    } else {
-                        self.close_file();
-                    }
-                }
-                return Ok(());
-            }
-            (_, KeyCode::Char('p'))
-                if key.modifiers.contains(KeyModifiers::CONTROL)
-                    && key.modifiers.contains(KeyModifiers::SHIFT) =>
-            {
-                self.open_command_palette();
-                return Ok(());
-            }
-            (_, KeyCode::Char('p'))
-                if key.modifiers.contains(KeyModifiers::CONTROL)
-                    && !key.modifiers.contains(KeyModifiers::SHIFT) =>
-            {
-                self.file_picker_open = true;
-                self.file_picker_query.clear();
-                self.file_picker_index = 0;
-                self.refresh_file_picker_results();
-                return Ok(());
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('h')) => {
-                self.prompt = Some(PromptState {
-                    title: "Find (for replace)".to_string(),
-                    value: String::new(),
-                    mode: PromptMode::FindInFile,
-                });
-                self.replace_after_find = true;
-                return Ok(());
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('f')) => {
-                self.prompt = Some(PromptState {
-                    title: "Find in file (regex)".to_string(),
-                    value: String::new(),
-                    mode: PromptMode::FindInFile,
-                });
-                return Ok(());
-            }
-            (_, KeyCode::Char('f'))
-                if key.modifiers.contains(KeyModifiers::CONTROL)
-                    && key.modifiers.contains(KeyModifiers::SHIFT) =>
-            {
-                self.prompt = Some(PromptState {
-                    title: "Search in files (ripgrep)".to_string(),
-                    value: String::new(),
-                    mode: PromptMode::FindInProject,
-                });
-                return Ok(());
-            }
-            (KeyModifiers::NONE, KeyCode::F(4)) | (KeyModifiers::NONE, KeyCode::Char('?')) => {
-                self.help_open = true;
-                return Ok(());
-            }
             (_, KeyCode::Esc) => {
                 if self.open_path().is_some() && self.is_dirty() {
                     self.pending = PendingAction::ClosePrompt;
@@ -1968,22 +2670,6 @@ impl App {
                     self.close_file();
                     return Ok(());
                 }
-            }
-            (_, KeyCode::Char('s')) | (_, KeyCode::Char('S'))
-                if key.modifiers.contains(KeyModifiers::CONTROL)
-                    && !key.modifiers.contains(KeyModifiers::ALT) =>
-            {
-                self.save_file()?;
-                return Ok(());
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('n')) => {
-                self.create_new_file()?;
-                return Ok(());
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('r')) => {
-                self.rebuild_tree()?;
-                self.set_status("Tree refreshed");
-                return Ok(());
             }
             (KeyModifiers::NONE, KeyCode::Tab) => {
                 if self.focus == Focus::Editor {
@@ -1998,15 +2684,6 @@ impl App {
                 if self.focus != Focus::Editor {
                     return Ok(());
                 }
-            }
-            (KeyModifiers::SHIFT, KeyCode::BackTab) => {
-                if self.focus == Focus::Editor && self.open_path().is_some() {
-                    self.dedent_lines();
-                } else {
-                    self.focus = Focus::Editor;
-                    self.set_status("Focus: editor");
-                }
-                return Ok(());
             }
             (KeyModifiers::NONE, KeyCode::Delete) => {
                 if self.focus == Focus::Tree {
@@ -2042,7 +2719,7 @@ impl App {
             (_, KeyCode::Enter) => {
                 let value = prompt.value.trim().to_string();
                 if value.is_empty()
-                    && !matches!(prompt.mode, PromptMode::FindInFile)
+                    && !matches!(prompt.mode, PromptMode::FindInFile | PromptMode::GoToLine)
                 {
                     self.set_status("Name cannot be empty");
                     return Ok(());
@@ -2105,7 +2782,7 @@ impl App {
 
     fn handle_search_results_key(&mut self, key: KeyEvent) -> io::Result<()> {
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc) | (_, KeyCode::Char('q')) => {
+            (_, KeyCode::Esc) => {
                 self.search_results_open = false;
                 self.set_status("Closed search results");
             }
@@ -2159,7 +2836,7 @@ impl App {
 
     fn handle_context_menu_key(&mut self, key: KeyEvent) -> io::Result<()> {
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc) | (_, KeyCode::Char('q')) => {
+            (_, KeyCode::Esc) => {
                 self.context_menu_open = false;
             }
             (_, KeyCode::Down) | (_, KeyCode::Char('j')) => {
@@ -2303,39 +2980,8 @@ impl App {
             return Ok(());
         }
 
+        // Non-remappable: Tab (completion/ghost/indent), auto-pair insertion
         match (key.modifiers, key.code) {
-            (_, KeyCode::Down)
-                if key.modifiers.contains(KeyModifiers::SHIFT)
-                    && key.modifiers.contains(KeyModifiers::ALT) =>
-            {
-                self.duplicate_current_line(false);
-                return Ok(());
-            }
-            (_, KeyCode::Up)
-                if key.modifiers.contains(KeyModifiers::SHIFT)
-                    && key.modifiers.contains(KeyModifiers::ALT) =>
-            {
-                self.duplicate_current_line(true);
-                return Ok(());
-            }
-            (_, KeyCode::Char('{'))
-                if key.modifiers.contains(KeyModifiers::CONTROL)
-                    && key.modifiers.contains(KeyModifiers::SHIFT) =>
-            {
-                self.fold_current_block();
-                return Ok(());
-            }
-            (_, KeyCode::Char('}'))
-                if key.modifiers.contains(KeyModifiers::CONTROL)
-                    && key.modifiers.contains(KeyModifiers::SHIFT) =>
-            {
-                self.unfold_current_block();
-                return Ok(());
-            }
-            (KeyModifiers::SHIFT, KeyCode::BackTab) => {
-                self.dedent_lines();
-                return Ok(());
-            }
             (KeyModifiers::NONE, KeyCode::Tab) if self.completion_open => {
                 self.apply_completion();
                 return Ok(());
@@ -2366,93 +3012,8 @@ impl App {
                     return Ok(());
                 }
             }
-            (KeyModifiers::CONTROL, KeyCode::Null) | (KeyModifiers::CONTROL, KeyCode::Char(' ')) => {
+            (KeyModifiers::CONTROL, KeyCode::Null) => {
                 self.request_lsp_completion();
-                return Ok(());
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('.')) => {
-                self.request_lsp_completion();
-                return Ok(());
-            }
-            (_, KeyCode::Char('g'))
-                if key.modifiers.contains(KeyModifiers::CONTROL)
-                    && key.modifiers.contains(KeyModifiers::SHIFT) =>
-            {
-                if self.active_tab_mut().is_some_and(|t| t.editor.search_back(false)) {
-                    self.set_status("Find previous");
-                    self.sync_editor_scroll_guess();
-                } else {
-                    self.set_status("No previous match");
-                }
-                return Ok(());
-            }
-            (_, KeyCode::Char('g')) if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if self.active_tab_mut().is_some_and(|t| t.editor.search_forward(false)) {
-                    self.set_status("Find next");
-                    self.sync_editor_scroll_guess();
-                } else {
-                    self.set_status("No next match");
-                }
-                return Ok(());
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('/')) => {
-                self.toggle_comment();
-                return Ok(());
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
-                if let Some(tab) = self.active_tab_mut() { tab.editor.select_all(); }
-                self.set_status("Selected all");
-                return Ok(());
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
-                self.copy_selection_to_clipboard();
-                return Ok(());
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('x')) => {
-                self.cut_selection_to_clipboard();
-                return Ok(());
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('v')) => {
-                self.paste_from_clipboard();
-                return Ok(());
-            }
-            (_, KeyCode::Char('z'))
-                if key.modifiers.contains(KeyModifiers::CONTROL)
-                    && key.modifiers.contains(KeyModifiers::SHIFT) =>
-            {
-                if self.active_tab_mut().is_some_and(|t| t.editor.redo()) {
-                    self.mark_dirty();
-                    self.notify_lsp_did_change();
-                    self.recompute_folds();
-                    self.set_status("Redo");
-                } else {
-                    self.set_status("Nothing to redo");
-                }
-                self.sync_editor_scroll_guess();
-                return Ok(());
-            }
-            (_, KeyCode::Char('z')) if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if self.active_tab_mut().is_some_and(|t| t.editor.undo()) {
-                    self.mark_dirty();
-                    self.notify_lsp_did_change();
-                    self.recompute_folds();
-                    self.set_status("Undo");
-                } else {
-                    self.set_status("Nothing to undo");
-                }
-                self.sync_editor_scroll_guess();
-                return Ok(());
-            }
-            (_, KeyCode::Char('y')) if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if self.active_tab_mut().is_some_and(|t| t.editor.redo()) {
-                    self.mark_dirty();
-                    self.notify_lsp_did_change();
-                    self.recompute_folds();
-                    self.set_status("Redo");
-                } else {
-                    self.set_status("Nothing to redo");
-                }
-                self.sync_editor_scroll_guess();
                 return Ok(());
             }
             (KeyModifiers::NONE, KeyCode::Char(c))
@@ -2484,6 +3045,11 @@ impl App {
             _ => {}
         }
 
+        // Editor keybind lookup
+        if let Some(action) = self.keybinds.lookup(&key, KeyScope::Editor) {
+            return self.run_key_action(action);
+        }
+
         let modified = self.active_tab_mut().is_some_and(|t| t.editor.input(Input::from(key)));
         if modified {
             self.mark_dirty();
@@ -2493,6 +3059,346 @@ impl App {
         self.sync_editor_scroll_guess();
         self.refresh_inline_ghost();
         Ok(())
+    }
+
+    fn run_key_action(&mut self, action: KeyAction) -> io::Result<()> {
+        match action {
+            // Global
+            KeyAction::Save => self.save_file()?,
+            KeyAction::CloseTab => {
+                if !self.tabs.is_empty() {
+                    if self.is_dirty() {
+                        self.pending = PendingAction::ClosePrompt;
+                        self.set_status("Unsaved changes: Enter save+close | Esc discard | C cancel");
+                    } else {
+                        self.close_file();
+                    }
+                }
+            }
+            KeyAction::Quit => {
+                if self.any_tab_dirty() {
+                    if matches!(self.pending, PendingAction::Quit) {
+                        self.quit = true;
+                    } else {
+                        self.pending = PendingAction::Quit;
+                        self.set_status(format!(
+                            "Unsaved changes. Press {}+Q again to quit.",
+                            primary_mod_label()
+                        ));
+                    }
+                } else {
+                    self.quit = true;
+                }
+            }
+            KeyAction::ToggleFiles => {
+                self.files_view_open = !self.files_view_open;
+                if !self.files_view_open {
+                    self.focus = Focus::Editor;
+                    self.set_status("Files view hidden");
+                } else {
+                    self.set_status("Files view shown");
+                }
+            }
+            KeyAction::CommandPalette => self.open_command_palette(),
+            KeyAction::QuickOpen => {
+                self.file_picker_open = true;
+                self.file_picker_query.clear();
+                self.file_picker_index = 0;
+                self.refresh_file_picker_results();
+            }
+            KeyAction::Find => {
+                self.prompt = Some(PromptState {
+                    title: "Find in file (regex)".to_string(),
+                    value: String::new(),
+                    mode: PromptMode::FindInFile,
+                });
+            }
+            KeyAction::FindReplace => {
+                self.prompt = Some(PromptState {
+                    title: "Find (for replace)".to_string(),
+                    value: String::new(),
+                    mode: PromptMode::FindInFile,
+                });
+                self.replace_after_find = true;
+            }
+            KeyAction::SearchFiles => {
+                self.prompt = Some(PromptState {
+                    title: "Search in files (ripgrep)".to_string(),
+                    value: String::new(),
+                    mode: PromptMode::FindInProject,
+                });
+            }
+            KeyAction::GoToLine => {
+                self.prompt = Some(PromptState {
+                    title: "Go to line".to_string(),
+                    value: String::new(),
+                    mode: PromptMode::GoToLine,
+                });
+            }
+            KeyAction::Help => self.help_open = true,
+            KeyAction::NewFile => self.create_new_file()?,
+            KeyAction::RefreshTree => {
+                self.rebuild_tree()?;
+                self.set_status("Tree refreshed");
+            }
+            KeyAction::PrevTab => {
+                if !self.tabs.is_empty() {
+                    let prev = if self.active_tab == 0 {
+                        self.tabs.len() - 1
+                    } else {
+                        self.active_tab - 1
+                    };
+                    self.switch_to_tab(prev);
+                }
+            }
+            KeyAction::NextTab => {
+                if !self.tabs.is_empty() {
+                    let next = (self.active_tab + 1) % self.tabs.len();
+                    self.switch_to_tab(next);
+                }
+            }
+            // Editor
+            KeyAction::GoToDefinition => {
+                if self.focus == Focus::Editor {
+                    self.request_lsp_definition();
+                }
+            }
+            KeyAction::FoldToggle => self.toggle_fold_at_cursor(),
+            KeyAction::FoldAllToggle => self.toggle_fold_all(),
+            KeyAction::Fold => self.fold_current_block(),
+            KeyAction::Unfold => self.unfold_current_block(),
+            KeyAction::FoldAll => self.fold_all(),
+            KeyAction::UnfoldAll => self.unfold_all(),
+            KeyAction::FindNext => {
+                if self.active_tab_mut().is_some_and(|t| t.editor.search_forward(false)) {
+                    self.set_status("Find next");
+                    self.sync_editor_scroll_guess();
+                } else {
+                    self.set_status("No next match");
+                }
+            }
+            KeyAction::FindPrev => {
+                if self.active_tab_mut().is_some_and(|t| t.editor.search_back(false)) {
+                    self.set_status("Find previous");
+                    self.sync_editor_scroll_guess();
+                } else {
+                    self.set_status("No previous match");
+                }
+            }
+            KeyAction::DupLineDown => self.duplicate_current_line(false),
+            KeyAction::DupLineUp => self.duplicate_current_line(true),
+            KeyAction::Dedent => self.dedent_lines(),
+            KeyAction::Completion => self.request_lsp_completion(),
+            KeyAction::Undo => {
+                if self.active_tab_mut().is_some_and(|t| t.editor.undo()) {
+                    self.mark_dirty();
+                    self.notify_lsp_did_change();
+                    self.recompute_folds();
+                    self.set_status("Undo");
+                } else {
+                    self.set_status("Nothing to undo");
+                }
+                self.sync_editor_scroll_guess();
+            }
+            KeyAction::Redo => {
+                if self.active_tab_mut().is_some_and(|t| t.editor.redo()) {
+                    self.mark_dirty();
+                    self.notify_lsp_did_change();
+                    self.recompute_folds();
+                    self.set_status("Redo");
+                } else {
+                    self.set_status("Nothing to redo");
+                }
+                self.sync_editor_scroll_guess();
+            }
+            KeyAction::SelectAll => {
+                if let Some(tab) = self.active_tab_mut() {
+                    tab.editor.select_all();
+                }
+                self.set_status("Selected all");
+            }
+            KeyAction::Copy => self.copy_selection_to_clipboard(),
+            KeyAction::Cut => self.cut_selection_to_clipboard(),
+            KeyAction::Paste => self.paste_from_clipboard(),
+            KeyAction::ToggleComment => self.toggle_comment(),
+            KeyAction::PageDown => self.page_down(),
+            KeyAction::PageUp => self.page_up(),
+            KeyAction::GoToStart => {
+                if let Some(tab) = self.active_tab_mut() {
+                    tab.editor
+                        .move_cursor(tui_textarea::CursorMove::Jump(0, 0));
+                }
+                self.sync_editor_scroll_guess();
+                self.set_status("Top of file");
+            }
+            KeyAction::GoToEnd => {
+                if let Some(tab) = self.active_tab() {
+                    let last_row = tab.editor.lines().len().saturating_sub(1);
+                    let last_col = tab.editor.lines().last().map_or(0, |l| l.len());
+                    if let Some(tab) = self.active_tab_mut() {
+                        tab.editor.move_cursor(tui_textarea::CursorMove::Jump(
+                            last_row as u16,
+                            last_col as u16,
+                        ));
+                    }
+                }
+                self.sync_editor_scroll_guess();
+                self.set_status("End of file");
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_keybind_editor_key(&mut self, key: KeyEvent) -> io::Result<()> {
+        // Handle conflict confirmation state
+        if let Some((bind, for_action)) = self.keybind_editor_conflict.take() {
+            match key.code {
+                KeyCode::Enter => {
+                    // Overwrite: remove conflicting bind from other action
+                    if let Some(conflict_action) = self.keybinds.find_conflict(&bind, for_action) {
+                        self.keybinds.remove_bind_from(conflict_action, &bind);
+                    }
+                    // Replace target action bind (same behavior as normal rebind flow)
+                    self.keybinds.map.insert(for_action, vec![bind]);
+                    let _ = save_keybindings(&self.keybinds);
+                    self.set_status(format!("Bound to {}", for_action.label()));
+                    self.keybind_editor_recording = false;
+                    return Ok(());
+                }
+                KeyCode::Esc => {
+                    self.keybind_editor_recording = false;
+                    self.set_status("Canceled");
+                    return Ok(());
+                }
+                _ => {
+                    // Let user immediately try a different key instead of getting stuck.
+                    self.keybind_editor_conflict = None;
+                    self.keybind_editor_recording = true;
+                }
+            }
+        }
+
+        // Recording mode: next keypress becomes the new bind
+        if self.keybind_editor_recording {
+            if key.code == KeyCode::Esc {
+                self.keybind_editor_recording = false;
+                self.set_status("Canceled recording");
+                return Ok(());
+            }
+            let Some(action) = self.selected_keybind_action() else {
+                self.keybind_editor_recording = false;
+                self.set_status("No matching actions to bind");
+                return Ok(());
+            };
+            let bind = KeyBind {
+                modifiers: key.modifiers,
+                code: KeyBind::normalize_char_with_modifiers(key.code, key.modifiers),
+            };
+            // Check for conflicts
+            if let Some(conflict_action) = self.keybinds.find_conflict(&bind, action) {
+                self.set_status(format!(
+                    "{} already bound to {}. Enter to overwrite, Esc to cancel",
+                    bind.display(),
+                    conflict_action.label()
+                ));
+                self.keybind_editor_conflict = Some((bind, action));
+                return Ok(());
+            }
+            // No conflict, set the bind
+            self.keybinds.map.insert(action, vec![bind]);
+            let _ = save_keybindings(&self.keybinds);
+            self.keybind_editor_recording = false;
+            self.set_status(format!(
+                "Bound {} to {}",
+                self.keybinds.display_for(action),
+                action.label()
+            ));
+            return Ok(());
+        }
+
+        match (key.modifiers, key.code) {
+            (_, KeyCode::Esc) => {
+                self.keybind_editor_open = false;
+                self.keybind_editor_query.clear();
+            }
+            (_, KeyCode::Down) => {
+                if self.keybind_editor_index + 1 < self.keybind_editor_actions.len() {
+                    self.keybind_editor_index += 1;
+                }
+            }
+            (_, KeyCode::Up) => {
+                if self.keybind_editor_index > 0 {
+                    self.keybind_editor_index -= 1;
+                }
+            }
+            (_, KeyCode::Enter) => {
+                let Some(action) = self.selected_keybind_action() else {
+                    self.set_status("No matching actions to bind");
+                    return Ok(());
+                };
+                self.keybind_editor_recording = true;
+                self.set_status(format!(
+                    "Press new key for '{}' (Esc to cancel)",
+                    action.label()
+                ));
+            }
+            (_, KeyCode::Delete) | (_, KeyCode::Backspace)
+                if key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                // Remove all bindings for this action
+                let Some(action) = self.selected_keybind_action() else {
+                    self.set_status("No matching actions to clear");
+                    return Ok(());
+                };
+                self.keybinds.map.insert(action, Vec::new());
+                let _ = save_keybindings(&self.keybinds);
+                self.set_status(format!("Cleared bindings for {}", action.label()));
+            }
+            (_, KeyCode::Char('r')) | (_, KeyCode::Char('R'))
+                if key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                // Reset to default
+                let Some(action) = self.selected_keybind_action() else {
+                    self.set_status("No matching actions to reset");
+                    return Ok(());
+                };
+                let defaults = KeyBindings::defaults();
+                let default_binds = defaults.map.get(&action).cloned().unwrap_or_default();
+                self.keybinds.map.insert(action, default_binds);
+                let _ = save_keybindings(&self.keybinds);
+                self.set_status(format!("Reset {} to default", action.label()));
+            }
+            (_, KeyCode::Backspace) => {
+                self.keybind_editor_query.pop();
+                self.refresh_keybind_editor_actions();
+            }
+            (_, KeyCode::Char(c)) => {
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                {
+                    self.keybind_editor_query.push(c);
+                    self.refresh_keybind_editor_actions();
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn selected_keybind_action(&self) -> Option<KeyAction> {
+        selected_action(&self.keybind_editor_actions, self.keybind_editor_index)
+    }
+
+    fn refresh_keybind_editor_actions(&mut self) {
+        let q = self.keybind_editor_query.to_ascii_lowercase();
+        self.keybind_editor_actions = KeyAction::all()
+            .iter()
+            .copied()
+            .filter(|a| q.is_empty() || a.label().to_ascii_lowercase().contains(&q))
+            .collect();
+        self.keybind_editor_index = self
+            .keybind_editor_index
+            .min(self.keybind_editor_actions.len().saturating_sub(1));
     }
 
     fn duplicate_current_line(&mut self, above: bool) {
@@ -2952,6 +3858,26 @@ impl App {
             PromptMode::ReplaceInFile { search } => {
                 self.replace_in_open_file(&search, &value);
             }
+            PromptMode::GoToLine => {
+                if let Ok(line_num) = value.parse::<usize>() {
+                    if line_num == 0 {
+                        self.set_status("Line number must be >= 1");
+                        return Ok(());
+                    }
+                    let target = line_num.saturating_sub(1);
+                    if let Some(tab) = self.active_tab_mut() {
+                        let max_line = tab.editor.lines().len().saturating_sub(1);
+                        let clamped = target.min(max_line);
+                        tab.editor.cancel_selection();
+                        tab.editor
+                            .move_cursor(tui_textarea::CursorMove::Jump(clamped as u16, 0));
+                    }
+                    self.sync_editor_scroll_guess();
+                    self.set_status(format!("Jumped to line {}", target + 1));
+                } else {
+                    self.set_status("Invalid line number");
+                }
+            }
         }
         Ok(())
     }
@@ -3134,11 +4060,12 @@ impl App {
     }
 
     fn handle_help_key(&mut self, key: KeyEvent) -> io::Result<()> {
+        let is_help_key = self.keybinds.lookup(&key, KeyScope::Global) == Some(KeyAction::Help);
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc)
-            | (_, KeyCode::Char('q'))
-            | (_, KeyCode::Char('?'))
-            | (_, KeyCode::F(4)) => {
+            (_, KeyCode::Esc) => {
+                self.help_open = false;
+            }
+            _ if is_help_key => {
                 self.help_open = false;
             }
             _ => {}
@@ -3148,7 +4075,7 @@ impl App {
 
     fn handle_editor_context_menu_key(&mut self, key: KeyEvent) -> io::Result<()> {
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc) | (_, KeyCode::Char('q')) => {
+            (_, KeyCode::Esc) => {
                 self.editor_context_menu_open = false;
             }
             (_, KeyCode::Down) | (_, KeyCode::Char('j')) => {
@@ -3206,6 +4133,50 @@ impl App {
         }
     }
 
+    fn page_down(&mut self) {
+        let Some(tab) = self.active_tab() else { return; };
+        let inner_height = self.editor_rect.height.saturating_sub(2) as usize;
+        if inner_height == 0 { return; }
+        let (cursor_row, cursor_col) = tab.editor.cursor();
+        let visible_rows = &tab.visible_rows_map;
+        if visible_rows.is_empty() { return; }
+        let cursor_vis = self.visible_index_of_source_row(cursor_row);
+        let target_vis = (cursor_vis + inner_height).min(visible_rows.len().saturating_sub(1));
+        let target_row = visible_rows[target_vis];
+        let target_lines = self.active_tab().map_or(0, |t| {
+            t.editor.lines().get(target_row).map_or(0, |l| l.len())
+        });
+        let col = cursor_col.min(target_lines);
+        if let Some(tab) = self.active_tab_mut() {
+            tab.editor.move_cursor(tui_textarea::CursorMove::Jump(
+                target_row as u16, col as u16,
+            ));
+        }
+        self.sync_editor_scroll_guess();
+    }
+
+    fn page_up(&mut self) {
+        let Some(tab) = self.active_tab() else { return; };
+        let inner_height = self.editor_rect.height.saturating_sub(2) as usize;
+        if inner_height == 0 { return; }
+        let (cursor_row, cursor_col) = tab.editor.cursor();
+        let visible_rows = &tab.visible_rows_map;
+        if visible_rows.is_empty() { return; }
+        let cursor_vis = self.visible_index_of_source_row(cursor_row);
+        let target_vis = cursor_vis.saturating_sub(inner_height);
+        let target_row = visible_rows[target_vis];
+        let target_lines = self.active_tab().map_or(0, |t| {
+            t.editor.lines().get(target_row).map_or(0, |l| l.len())
+        });
+        let col = cursor_col.min(target_lines);
+        if let Some(tab) = self.active_tab_mut() {
+            tab.editor.move_cursor(tui_textarea::CursorMove::Jump(
+                target_row as u16, col as u16,
+            ));
+        }
+        self.sync_editor_scroll_guess();
+    }
+
     fn editor_pos_from_mouse(&self, x: u16, y: u16) -> Option<(usize, usize)> {
         if !inside(x, y, self.editor_rect) {
             return None;
@@ -3231,16 +4202,16 @@ impl App {
 
     fn handle_menu_key(&mut self, key: KeyEvent) -> io::Result<()> {
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc) | (_, KeyCode::Char('q')) | (_, KeyCode::F(5)) => {
+            (_, KeyCode::Esc) => {
                 self.menu_open = false;
                 self.menu_query.clear();
             }
-            (_, KeyCode::Down) | (_, KeyCode::Char('j')) => {
+            (_, KeyCode::Down) => {
                 if self.menu_index + 1 < self.menu_results.len() {
                     self.menu_index += 1;
                 }
             }
-            (_, KeyCode::Up) | (_, KeyCode::Char('k')) => {
+            (_, KeyCode::Up) => {
                 if self.menu_index > 0 {
                     self.menu_index -= 1;
                 }
@@ -3361,7 +4332,7 @@ impl App {
 
     fn handle_theme_browser_key(&mut self, key: KeyEvent) -> io::Result<()> {
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc) | (_, KeyCode::Char('q')) => {
+            (_, KeyCode::Esc) => {
                 self.active_theme_index = self.preview_revert_index;
                 self.theme_index = self.preview_revert_index;
                 self.theme_browser_open = false;
@@ -3805,6 +4776,8 @@ fn command_action_label(action: CommandAction) -> &'static str {
         CommandAction::ToggleFiles => "Toggle Files Pane",
         CommandAction::GotoDefinition => "Go to Definition",
         CommandAction::ReplaceInFile => "Find and Replace",
+        CommandAction::GoToLine => "Go to Line",
+        CommandAction::Keybinds => "Keybind Editor",
     }
 }
 
@@ -4436,6 +5409,8 @@ fn theme_from_file(tf: ThemeFile) -> Theme {
         fg_muted,
         border: border_color,
         accent: color_from_hex(&tf.colors.accent, Color::Rgb(206, 198, 130)),
+        accent_secondary: tf.colors.accent_secondary.as_ref()
+            .map_or(Color::Rgb(86, 156, 214), |c| color_from_hex(c, Color::Rgb(86, 156, 214))),
         selection: color_from_hex(&tf.colors.selection, Color::Rgb(51, 70, 124)),
         comment: syn.and_then(|s| s.comment.as_ref())
             .map_or(fg_muted, |c| color_from_hex(c, fg_muted)),
@@ -4863,9 +5838,16 @@ fn draw(app: &mut App, frame: &mut Frame<'_>) {
         }
     }
 
-    let modk = primary_mod_label();
+    let kb = &app.keybinds;
     let status = Paragraph::new(format!(
-        "F1/F2 Tabs   F3 Files   F4 Help   F5 Cmd   {modk}+W Close   {modk}+S Save"
+        "{} Cmd   {} Open   {} Help   {} Files   {} Close   {} Save   {} Quit",
+        kb.display_for(KeyAction::CommandPalette),
+        kb.display_for(KeyAction::QuickOpen),
+        kb.display_for(KeyAction::Help),
+        kb.display_for(KeyAction::ToggleFiles),
+        kb.display_for(KeyAction::CloseTab),
+        kb.display_for(KeyAction::Save),
+        kb.display_for(KeyAction::Quit),
     ))
     .style(Style::default().fg(theme.fg).bg(theme.bg_alt))
     .wrap(Wrap { trim: true })
@@ -4889,6 +5871,9 @@ fn draw(app: &mut App, frame: &mut Frame<'_>) {
     }
     if app.help_open {
         render_help(app, frame);
+    }
+    if app.keybind_editor_open {
+        render_keybind_editor(app, frame);
     }
     if app.context_menu_open {
         render_context_menu(app, frame);
@@ -5136,52 +6121,248 @@ fn render_completion_popup(app: &mut App, frame: &mut Frame<'_>) {
     frame.render_widget(list, area);
 }
 
+fn help_keybind_line<'a>(entries: &[(&str, &str)], key_style: Style, desc_style: Style, sep_style: Style) -> Line<'a> {
+    let mut spans = Vec::new();
+    for (i, (key, desc)) in entries.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled("  |  ", sep_style));
+        }
+        spans.push(Span::styled(key.to_string(), key_style));
+        spans.push(Span::styled(format!(" {desc}"), desc_style));
+    }
+    Line::from(spans)
+}
+
+fn render_keybind_editor(app: &mut App, frame: &mut Frame<'_>) {
+    let theme = app.active_theme().clone();
+    let area = centered_rect(72, 78, frame.area());
+    frame.render_widget(Clear, area);
+    let heading = Style::default().fg(theme.accent).add_modifier(Modifier::BOLD);
+
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::from(vec![
+        Span::styled("Filter: ", Style::default().fg(theme.fg_muted)),
+        Span::styled(app.keybind_editor_query.clone(), Style::default().fg(theme.fg)),
+    ]));
+    lines.push(Line::from(""));
+    if app.keybind_editor_actions.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "No matching actions",
+            Style::default().fg(theme.fg_muted),
+        )));
+    } else {
+        // Build display rows: section headers (None) + action rows (Some(index))
+        let mut display_rows: Vec<Option<usize>> = Vec::new();
+        let has_global = app.keybind_editor_actions.iter().any(|a| a.is_global());
+        let has_editor = app.keybind_editor_actions.iter().any(|a| a.is_editor());
+        let mut entered_editor = false;
+        if has_global {
+            display_rows.push(None); // "Global" header
+        }
+        for (idx, action) in app.keybind_editor_actions.iter().enumerate() {
+            if action.is_editor() && !entered_editor {
+                entered_editor = true;
+                if has_editor {
+                    display_rows.push(None); // "Editor" header
+                }
+            }
+            display_rows.push(Some(idx));
+        }
+
+        // Find which display row the selected action maps to, for scrolling
+        let selected_display_row = display_rows
+            .iter()
+            .position(|r| *r == Some(app.keybind_editor_index))
+            .unwrap_or(0);
+
+        let max_visible = (area.height as usize).saturating_sub(7);
+        let start = if selected_display_row >= max_visible {
+            selected_display_row - max_visible + 1
+        } else {
+            0
+        };
+
+        // Track which headers we've passed to know what None means
+        let mut header_labels: Vec<&str> = Vec::new();
+        if has_global { header_labels.push("Global"); }
+        if has_editor { header_labels.push("Editor"); }
+        let mut header_count = 0;
+
+        for display_row in display_rows.iter().skip(start).take(max_visible) {
+            match display_row {
+                None => {
+                    if header_count > 0 {
+                        lines.push(Line::from(""));
+                    }
+                    if let Some(label) = header_labels.get(header_count) {
+                        lines.push(Line::from(Span::styled(*label, heading)));
+                        lines.push(Line::from(""));
+                    }
+                    header_count += 1;
+                }
+                Some(action_idx) => {
+                    let action = app.keybind_editor_actions[*action_idx];
+                    let label = action.label();
+                    let bind_str = app.keybinds.display_for(action);
+                    let is_selected = *action_idx == app.keybind_editor_index;
+                    let style = if is_selected {
+                        Style::default()
+                            .fg(theme.bg)
+                            .bg(theme.accent)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(theme.fg)
+                    };
+                    let bind_style = if is_selected {
+                        Style::default().fg(theme.bg).bg(theme.accent)
+                    } else {
+                        Style::default().fg(theme.accent_secondary)
+                    };
+                    lines.push(Line::from(vec![
+                        Span::styled(format!("  {label:<30}"), style),
+                        Span::styled(bind_str, bind_style),
+                    ]));
+                }
+            }
+        }
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Enter: rebind | Ctrl+Del: clear | Ctrl+R: reset | Esc: close",
+        Style::default().fg(theme.fg_muted),
+    )));
+    if app.keybind_editor_recording {
+        lines.push(Line::from(Span::styled(
+            ">> Press a key to bind... (Esc to cancel)",
+            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        )));
+    }
+    if let Some((bind, for_action)) = app.keybind_editor_conflict.as_ref() {
+        let other = app
+            .keybinds
+            .find_conflict(bind, *for_action)
+            .map(|a| a.label())
+            .unwrap_or("another action");
+        lines.push(Line::from(Span::styled(
+            format!(
+                "Conflict: {} is bound to {}. Enter overwrite | Esc cancel | any other key to retry",
+                bind.display(),
+                other
+            ),
+            Style::default().fg(theme.accent_secondary),
+        )));
+    }
+    let paragraph = Paragraph::new(lines)
+        .style(Style::default().fg(theme.fg).bg(theme.bg_alt))
+        .block(
+            Block::default()
+                .title(" Keybind Editor ")
+                .borders(Borders::ALL)
+                .style(Style::default().bg(theme.bg_alt))
+                .border_style(Style::default().fg(theme.accent)),
+        );
+    frame.render_widget(paragraph, area);
+}
+
 fn render_help(app: &mut App, frame: &mut Frame<'_>) {
     let theme = app.active_theme();
-    let area = centered_rect(74, 74, frame.area());
+    let area = centered_rect(78, 80, frame.area());
     frame.render_widget(Clear, area);
+
+    let kb = &app.keybinds;
     let m = primary_mod_label();
-    let help = vec![
-        "Keyboard".to_string(),
-        format!("{m}+S save | {m}+W close tab | {m}+R refresh | {m}+N new file | {m}+Q quit"),
-        format!("{m}+B toggle files | {m}+Shift+P command palette | {m}+P quick open"),
-        format!("{m}+F find | {m}+H find and replace | {m}+Shift+F search files | {m}+D or {m}+Alt+D go to definition"),
-        format!("{m}+Shift+{{ fold current block | {m}+Shift+}} unfold current block"),
-        "Shift+Alt+Down duplicate line below | Shift+Alt+Up duplicate line above".to_string(),
-        "Shift+Tab dedent line(s)".to_string(),
-        format!("{m}+G find next | {m}+Shift+G find previous"),
-        format!("Tab / {m}+Space / {m}+. completion (Rust LSP, ghost text + Tab accept)"),
-        format!("{m}+Z undo | {m}+Y or {m}+Shift+Z redo"),
-        format!("{m}+A select all | {m}+C copy | {m}+X cut | {m}+V paste | {m}+/ toggle comment"),
-        "F1 prev tab | F2 next tab | F3 toggle files | F4 help | F5 command palette".to_string(),
-        "".to_string(),
-        "Tree".to_string(),
-        "Up/Down or K/J move | Left/H collapse | Right/L/Enter open/toggle".to_string(),
-        format!("Delete -> {m}+D confirm delete"),
-        "".to_string(),
-        "Unsaved Two-Step".to_string(),
-        format!("Quit: {m}+Q then {m}+Q"),
-        format!("Close tab: {m}+W (with dirty check) or Esc when in editor"),
-        "".to_string(),
-        "Theme Browser".to_string(),
-        "Arrows preview live | Enter keep | Esc revert".to_string(),
-        "".to_string(),
-        "Mouse".to_string(),
-        "Single-click file → preview tab | Double-click → sticky tab | Click tab to switch | Click [x] to close".to_string(),
-        "Drag center divider to resize Files/Working panes (persisted)".to_string(),
-        "Right click tree opens CRUD menu (open/new/rename/delete)".to_string(),
-        "Editor: left drag selects text | right click opens edit menu".to_string(),
-        "Editor gutter click toggles fold at that line".to_string(),
-        "".to_string(),
-        "Esc/Q/F4 closes this help.".to_string(),
-    ]
-    .join("\n");
-    let paragraph = Paragraph::new(help)
+    let heading = Style::default().fg(theme.accent).add_modifier(Modifier::BOLD);
+    let key_s = Style::default().fg(theme.accent_secondary);
+    let desc_s = Style::default().fg(theme.fg);
+    let sep_s = Style::default().fg(theme.fg_muted);
+    let muted = Style::default().fg(theme.fg_muted);
+
+    let lines: Vec<Line> = vec![
+        Line::from(Span::styled("Keyboard", heading)),
+        Line::from(""),
+        help_keybind_line(&[
+            (&kb.display_for(KeyAction::Save), "save"), (&kb.display_for(KeyAction::CloseTab), "close tab"),
+            (&kb.display_for(KeyAction::NewFile), "new file"), (&kb.display_for(KeyAction::Quit), "quit"),
+        ], key_s, desc_s, sep_s),
+        help_keybind_line(&[
+            (&kb.display_for(KeyAction::CommandPalette), "command palette"), (&kb.display_for(KeyAction::QuickOpen), "quick open"),
+            (&kb.display_for(KeyAction::GoToLine), "go to line"),
+        ], key_s, desc_s, sep_s),
+        help_keybind_line(&[
+            (&kb.display_for(KeyAction::ToggleFiles), "toggle files"), (&kb.display_for(KeyAction::RefreshTree), "refresh tree"),
+        ], key_s, desc_s, sep_s),
+        help_keybind_line(&[
+            (&kb.display_for(KeyAction::Find), "find"), (&kb.display_for(KeyAction::FindReplace), "find & replace"),
+            (&kb.display_for(KeyAction::SearchFiles), "search files"),
+        ], key_s, desc_s, sep_s),
+        help_keybind_line(&[
+            (&kb.display_for(KeyAction::GoToDefinition), "go to definition"),
+        ], key_s, desc_s, sep_s),
+        help_keybind_line(&[
+            (&kb.display_for(KeyAction::FoldToggle), "toggle fold"), (&kb.display_for(KeyAction::FoldAllToggle), "toggle fold all"),
+        ], key_s, desc_s, sep_s),
+        help_keybind_line(&[
+            (&kb.display_for(KeyAction::Fold), "fold"), (&kb.display_for(KeyAction::Unfold), "unfold"),
+            (&kb.display_for(KeyAction::FoldAll), "fold all"), (&kb.display_for(KeyAction::UnfoldAll), "unfold all"),
+        ], key_s, desc_s, sep_s),
+        help_keybind_line(&[
+            (&kb.display_for(KeyAction::DupLineDown), "dup line down"), (&kb.display_for(KeyAction::DupLineUp), "dup line up"),
+        ], key_s, desc_s, sep_s),
+        help_keybind_line(&[
+            (&kb.display_for(KeyAction::FindNext), "find next"), (&kb.display_for(KeyAction::FindPrev), "find prev"),
+            (&kb.display_for(KeyAction::Dedent), "dedent"),
+        ], key_s, desc_s, sep_s),
+        help_keybind_line(&[
+            (&kb.display_for(KeyAction::PageUp), "page up"), (&kb.display_for(KeyAction::PageDown), "page down"),
+            (&kb.display_for(KeyAction::GoToStart), "start of file"), (&kb.display_for(KeyAction::GoToEnd), "end of file"),
+        ], key_s, desc_s, sep_s),
+        help_keybind_line(&[
+            ("Tab", "completion"), (&kb.display_for(KeyAction::Completion), "completion"),
+        ], key_s, desc_s, sep_s),
+        help_keybind_line(&[
+            (&kb.display_for(KeyAction::Undo), "undo"), (&kb.display_for(KeyAction::Redo), "redo"),
+        ], key_s, desc_s, sep_s),
+        help_keybind_line(&[
+            (&kb.display_for(KeyAction::SelectAll), "select all"), (&kb.display_for(KeyAction::Copy), "copy"),
+            (&kb.display_for(KeyAction::Cut), "cut"), (&kb.display_for(KeyAction::Paste), "paste"),
+            (&kb.display_for(KeyAction::ToggleComment), "toggle comment"),
+        ], key_s, desc_s, sep_s),
+        help_keybind_line(&[
+            (&kb.display_for(KeyAction::PrevTab), "prev tab"), (&kb.display_for(KeyAction::NextTab), "next tab"),
+            (&kb.display_for(KeyAction::Help), "help"),
+        ], key_s, desc_s, sep_s),
+        Line::from(""),
+        Line::from(Span::styled("Tree", heading)),
+        Line::from(""),
+        help_keybind_line(&[
+            ("Up/Down/K/J", "move"), ("Left/H", "collapse"), ("Right/L/Enter", "open"),
+        ], key_s, desc_s, sep_s),
+        help_keybind_line(&[
+            ("Delete", &format!("start delete, then {m}+D to confirm")),
+        ], key_s, desc_s, sep_s),
+        Line::from(""),
+        Line::from(Span::styled("Mouse", heading)),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Click", key_s), Span::styled(" file: preview tab", desc_s),
+            Span::styled("  |  ", sep_s),
+            Span::styled("Double-click", key_s), Span::styled(" sticky tab", desc_s),
+        ]),
+        Line::from(vec![
+            Span::styled("Click", key_s), Span::styled(" tab to switch", desc_s),
+            Span::styled("  |  ", sep_s),
+            Span::styled("Click [x]", key_s), Span::styled(" to close", desc_s),
+        ]),
+        Line::from(Span::styled("Drag divider to resize  |  Right-click: context menus  |  Gutter click: fold", muted)),
+        Line::from(""),
+    ];
+
+    let paragraph = Paragraph::new(lines)
         .wrap(Wrap { trim: true })
         .style(Style::default().fg(theme.fg).bg(theme.bg_alt))
         .block(
             Block::default()
-                .title("Help")
+                .title(" Help ")
                 .borders(Borders::ALL)
                 .style(Style::default().bg(theme.bg_alt))
                 .border_style(Style::default().fg(theme.accent)),
@@ -5473,10 +6654,19 @@ fn main() -> io::Result<()> {
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
 
+    let enhanced_keys = ratatui::crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
+    if enhanced_keys {
+        let _ = execute!(
+            stdout,
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        );
+    }
+
     // Restore terminal on panic so it doesn't get stuck in raw mode
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
         let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
         original_hook(info);
     }));
@@ -5484,11 +6674,15 @@ fn main() -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let terminal = Terminal::new(backend)?;
 
-    let app = App::new(root)?;
+    let mut app = App::new(root)?;
+    app.enhanced_keys = enhanced_keys;
     let result = run_app(terminal, app);
 
     disable_raw_mode()?;
     let mut stdout = io::stdout();
+    if enhanced_keys {
+        let _ = execute!(stdout, PopKeyboardEnhancementFlags);
+    }
     execute!(stdout, LeaveAlternateScreen, DisableMouseCapture)?;
 
     result
@@ -5516,6 +6710,7 @@ mod syntax_and_lang_tests {
             fg_muted: Color::Rgb(100, 100, 120),
             border: Color::Rgb(100, 100, 100),
             accent: Color::Rgb(86, 156, 214),
+            accent_secondary: Color::Rgb(206, 198, 130),
             selection: Color::Rgb(60, 60, 60),
             comment: Color::Rgb(100, 100, 120),
             syntax_string: Color::Rgb(156, 220, 140),
@@ -6938,5 +8133,408 @@ mod lsp_and_struct_tests {
         let c = item.clone();
         assert_eq!(item.path, c.path);
         assert_eq!(item.name, c.name);
+    }
+}
+
+#[cfg(test)]
+mod keybind_tests {
+    use super::*;
+
+    #[test]
+    fn test_keybind_parse_simple() {
+        let kb = KeyBind::parse("ctrl+s").unwrap();
+        assert_eq!(kb.modifiers, KeyModifiers::CONTROL);
+        assert_eq!(kb.code, KeyCode::Char('s'));
+    }
+
+    #[test]
+    fn test_keybind_parse_shift_modifier() {
+        let kb = KeyBind::parse("ctrl+shift+f").unwrap();
+        assert_eq!(kb.modifiers, KeyModifiers::CONTROL | KeyModifiers::SHIFT);
+        assert_eq!(kb.code, KeyCode::Char('f'));
+    }
+
+    #[test]
+    fn test_keybind_parse_alt_modifier() {
+        let kb = KeyBind::parse("ctrl+alt+d").unwrap();
+        assert_eq!(kb.modifiers, KeyModifiers::CONTROL | KeyModifiers::ALT);
+        assert_eq!(kb.code, KeyCode::Char('d'));
+    }
+
+    #[test]
+    fn test_keybind_parse_function_key() {
+        let kb = KeyBind::parse("f4").unwrap();
+        assert_eq!(kb.modifiers, KeyModifiers::NONE);
+        assert_eq!(kb.code, KeyCode::F(4));
+    }
+
+    #[test]
+    fn test_keybind_parse_shift_f3() {
+        let kb = KeyBind::parse("shift+f3").unwrap();
+        assert_eq!(kb.modifiers, KeyModifiers::SHIFT);
+        assert_eq!(kb.code, KeyCode::F(3));
+    }
+
+    #[test]
+    fn test_keybind_parse_pagedown() {
+        let kb = KeyBind::parse("pagedown").unwrap();
+        assert_eq!(kb.modifiers, KeyModifiers::NONE);
+        assert_eq!(kb.code, KeyCode::PageDown);
+    }
+
+    #[test]
+    fn test_keybind_parse_backtab() {
+        let kb = KeyBind::parse("shift+backtab").unwrap();
+        assert_eq!(kb.modifiers, KeyModifiers::SHIFT);
+        assert_eq!(kb.code, KeyCode::BackTab);
+    }
+
+    #[test]
+    fn test_keybind_parse_space() {
+        let kb = KeyBind::parse("ctrl+space").unwrap();
+        assert_eq!(kb.modifiers, KeyModifiers::CONTROL);
+        assert_eq!(kb.code, KeyCode::Char(' '));
+    }
+
+    #[test]
+    fn test_keybind_parse_invalid() {
+        assert!(KeyBind::parse("").is_none());
+        assert!(KeyBind::parse("ctrl+unknown_key").is_none());
+    }
+
+    #[test]
+    fn test_keybind_display() {
+        let kb = KeyBind::parse("ctrl+shift+f").unwrap();
+        assert_eq!(kb.display(), "Ctrl+Shift+F");
+    }
+
+    #[test]
+    fn test_keybind_display_simple() {
+        let kb = KeyBind::parse("ctrl+s").unwrap();
+        assert_eq!(kb.display(), "Ctrl+S");
+    }
+
+    #[test]
+    fn test_keybind_display_function_key() {
+        let kb = KeyBind::parse("f4").unwrap();
+        assert_eq!(kb.display(), "F4");
+    }
+
+    #[test]
+    fn test_keybind_to_string_config() {
+        let kb = KeyBind::parse("ctrl+shift+f").unwrap();
+        assert_eq!(kb.to_string_config(), "ctrl+shift+f");
+    }
+
+    #[test]
+    fn test_keybind_matches_simple() {
+        let kb = KeyBind::parse("ctrl+s").unwrap();
+        let event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+        assert!(kb.matches(&event));
+    }
+
+    #[test]
+    fn test_keybind_matches_uppercase() {
+        let kb = KeyBind::parse("ctrl+s").unwrap();
+        let event = KeyEvent::new(KeyCode::Char('S'), KeyModifiers::CONTROL | KeyModifiers::SHIFT);
+        assert!(kb.matches(&event));
+    }
+
+    #[test]
+    fn test_keybind_matches_ctrl_control_char_event() {
+        let kb = KeyBind::parse("ctrl+b").unwrap();
+        // Some terminals report Ctrl+B as ASCII control char 0x02.
+        let event = KeyEvent::new(KeyCode::Char('\u{2}'), KeyModifiers::CONTROL);
+        assert!(kb.matches(&event));
+    }
+
+    #[test]
+    fn test_keybind_no_match() {
+        let kb = KeyBind::parse("ctrl+s").unwrap();
+        let event = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL);
+        assert!(!kb.matches(&event));
+    }
+
+    #[test]
+    fn test_defaults_has_all_actions() {
+        let kb = KeyBindings::defaults();
+        for action in KeyAction::all() {
+            assert!(
+                kb.map.contains_key(action),
+                "Default keybindings missing action: {:?}",
+                action
+            );
+        }
+    }
+
+    #[test]
+    fn test_lookup_global() {
+        let kb = KeyBindings::defaults();
+        let event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+        assert_eq!(kb.lookup(&event, KeyScope::Global), Some(KeyAction::Save));
+    }
+
+    #[test]
+    fn test_lookup_editor() {
+        let kb = KeyBindings::defaults();
+        let event = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL);
+        assert_eq!(kb.lookup(&event, KeyScope::Editor), Some(KeyAction::FoldToggle));
+    }
+
+    #[test]
+    fn test_lookup_wrong_scope() {
+        let kb = KeyBindings::defaults();
+        let event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+        // Save is global, not editor
+        assert_eq!(kb.lookup(&event, KeyScope::Editor), None);
+    }
+
+    #[test]
+    fn test_display_for_action() {
+        let kb = KeyBindings::defaults();
+        assert_eq!(kb.display_for(KeyAction::Save), "Ctrl+S");
+        assert_eq!(kb.display_for(KeyAction::Help), "F4");
+    }
+
+    #[test]
+    fn test_find_conflict() {
+        let kb = KeyBindings::defaults();
+        let bind = KeyBind::parse("ctrl+s").unwrap();
+        // ctrl+s is bound to Save, so looking for conflicts from another action should find it
+        assert_eq!(kb.find_conflict(&bind, KeyAction::NewFile), Some(KeyAction::Save));
+        // No conflict with itself
+        assert_eq!(kb.find_conflict(&bind, KeyAction::Save), None);
+    }
+
+    #[test]
+    fn test_find_conflict_matches_runtime_semantics_for_shifted_chars() {
+        let kb = KeyBindings::defaults();
+        let bind = KeyBind::parse("ctrl+shift+s").unwrap();
+        // Runtime matching treats Ctrl+S and Ctrl+Shift+S as conflicting for Char keys.
+        assert_eq!(kb.find_conflict(&bind, KeyAction::NewFile), Some(KeyAction::Save));
+    }
+
+    #[test]
+    fn test_find_conflict_with_control_char_bind() {
+        let kb = KeyBindings::defaults();
+        let bind = KeyBind {
+            modifiers: KeyModifiers::CONTROL,
+            code: KeyCode::Char('\u{2}'),
+        };
+        assert_eq!(
+            kb.find_conflict(&bind, KeyAction::Quit),
+            Some(KeyAction::ToggleFiles)
+        );
+    }
+
+    #[test]
+    fn test_remove_bind_from() {
+        let mut kb = KeyBindings::defaults();
+        let bind = KeyBind::parse("ctrl+s").unwrap();
+        kb.remove_bind_from(KeyAction::Save, &bind);
+        let event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+        assert_eq!(kb.lookup(&event, KeyScope::Global), None);
+    }
+
+    #[test]
+    fn test_key_action_is_global_editor() {
+        assert!(KeyAction::Save.is_global());
+        assert!(!KeyAction::Save.is_editor());
+        assert!(KeyAction::Undo.is_editor());
+        assert!(!KeyAction::Undo.is_global());
+    }
+
+    #[test]
+    fn test_key_action_label() {
+        assert_eq!(KeyAction::Save.label(), "Save");
+        assert_eq!(KeyAction::GoToDefinition.label(), "Go to Definition");
+        assert_eq!(KeyAction::ToggleComment.label(), "Toggle Comment");
+    }
+
+    #[test]
+    fn test_key_action_serde_round_trip() {
+        let action = KeyAction::Save;
+        let json = serde_json::to_string(&action).unwrap();
+        assert_eq!(json, "\"save\"");
+        let parsed: KeyAction = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, KeyAction::Save);
+    }
+
+    #[test]
+    fn test_key_action_serde_snake_case() {
+        let action = KeyAction::GoToDefinition;
+        let json = serde_json::to_string(&action).unwrap();
+        assert_eq!(json, "\"go_to_definition\"");
+        let parsed: KeyAction = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, KeyAction::GoToDefinition);
+    }
+
+    #[test]
+    fn test_single_or_vec_deserialize_single() {
+        let json = r#""ctrl+s""#;
+        let v: SingleOrVec = serde_json::from_str(json).unwrap();
+        match v {
+            SingleOrVec::Single(s) => assert_eq!(s, "ctrl+s"),
+            _ => panic!("Expected Single"),
+        }
+    }
+
+    #[test]
+    fn test_single_or_vec_deserialize_multiple() {
+        let json = r#"["ctrl+shift+z", "ctrl+y"]"#;
+        let v: SingleOrVec = serde_json::from_str(json).unwrap();
+        match v {
+            SingleOrVec::Multiple(v) => {
+                assert_eq!(v.len(), 2);
+                assert_eq!(v[0], "ctrl+shift+z");
+                assert_eq!(v[1], "ctrl+y");
+            }
+            _ => panic!("Expected Multiple"),
+        }
+    }
+
+    #[test]
+    fn test_keybinds_json_deserialize() {
+        let json = r#"{"save": "ctrl+shift+s", "redo": ["ctrl+shift+z", "ctrl+y"]}"#;
+        let root: serde_json::Value = serde_json::from_str(json).unwrap();
+        let obj = root.as_object().unwrap();
+        let mut parsed: HashMap<String, SingleOrVec> = HashMap::new();
+        for (k, v) in obj {
+            if let Some((name, parsed_val)) = parse_override_entry(k, v.clone(), "test") {
+                parsed.insert(name, parsed_val);
+            }
+        }
+        assert_eq!(parsed.len(), 2);
+        assert!(parsed.contains_key("save"));
+        assert!(parsed.contains_key("redo"));
+    }
+
+    #[test]
+    fn test_conflicts_detection() {
+        let mut kb = KeyBindings::defaults();
+        // Add a conflict: bind Ctrl+S to NewFile as well
+        kb.map.entry(KeyAction::NewFile).or_default().push(KeyBind::parse("ctrl+s").unwrap());
+        let conflicts = kb.conflicts();
+        assert!(!conflicts.is_empty());
+    }
+
+    #[test]
+    fn test_set_binding() {
+        let mut kb = KeyBindings::defaults();
+        kb.set(KeyAction::Save, vec![KeyBind::parse("alt+s").unwrap()]);
+        let event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+        assert_eq!(kb.lookup(&event, KeyScope::Global), None);
+        let event2 = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::ALT);
+        assert_eq!(kb.lookup(&event2, KeyScope::Global), Some(KeyAction::Save));
+    }
+
+    #[test]
+    fn test_lookup_deterministic_for_conflicting_actions() {
+        let mut kb = KeyBindings::defaults();
+        kb.map
+            .insert(KeyAction::NewFile, vec![KeyBind::parse("ctrl+s").unwrap()]);
+        let event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+        // Save appears before NewFile in KeyAction::all().
+        assert_eq!(kb.lookup(&event, KeyScope::Global), Some(KeyAction::Save));
+    }
+
+    #[test]
+    fn test_apply_overrides_explicit_empty_unbinds_action() {
+        let mut kb = KeyBindings::defaults();
+        let mut overrides = HashMap::new();
+        overrides.insert("save".to_string(), SingleOrVec::Multiple(Vec::new()));
+        apply_keybinding_overrides(&mut kb, overrides, "test");
+        let event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+        assert_eq!(kb.lookup(&event, KeyScope::Global), None);
+    }
+
+    #[test]
+    fn test_apply_overrides_unknown_action_does_not_block_valid_overrides() {
+        let mut kb = KeyBindings::defaults();
+        let mut overrides = HashMap::new();
+        overrides.insert(
+            "not_an_action".to_string(),
+            SingleOrVec::Single("ctrl+k".to_string()),
+        );
+        overrides.insert(
+            "save".to_string(),
+            SingleOrVec::Single("alt+s".to_string()),
+        );
+        apply_keybinding_overrides(&mut kb, overrides, "test");
+
+        let old_event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+        let new_event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::ALT);
+        assert_eq!(kb.lookup(&old_event, KeyScope::Global), None);
+        assert_eq!(kb.lookup(&new_event, KeyScope::Global), Some(KeyAction::Save));
+    }
+
+    #[test]
+    fn test_apply_overrides_invalid_bind_does_not_unbind_default() {
+        let mut kb = KeyBindings::defaults();
+        let mut overrides = HashMap::new();
+        overrides.insert(
+            "save".to_string(),
+            SingleOrVec::Single("ctrl+notakey".to_string()),
+        );
+        apply_keybinding_overrides(&mut kb, overrides, "test");
+
+        let event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+        assert_eq!(kb.lookup(&event, KeyScope::Global), Some(KeyAction::Save));
+    }
+
+    #[test]
+    fn test_parse_key_action_name() {
+        assert_eq!(parse_key_action_name("save"), Some(KeyAction::Save));
+        assert_eq!(parse_key_action_name("no_such_action"), None);
+    }
+
+    #[test]
+    fn test_selected_action_handles_empty_actions() {
+        let actions: Vec<KeyAction> = Vec::new();
+        assert_eq!(selected_action(&actions, 0), None);
+    }
+
+    #[test]
+    fn test_parse_override_entry_tolerates_bad_types_per_entry() {
+        let good = parse_override_entry(
+            "save",
+            serde_json::Value::String("ctrl+s".to_string()),
+            "test",
+        );
+        assert!(good.is_some());
+
+        let bad = parse_override_entry("save", serde_json::json!(123), "test");
+        assert!(bad.is_none());
+    }
+
+    #[test]
+    fn test_parse_override_entry_array_requires_all_strings() {
+        let ok = parse_override_entry("redo", serde_json::json!(["ctrl+y", "ctrl+shift+z"]), "test");
+        assert!(ok.is_some());
+
+        let bad = parse_override_entry("redo", serde_json::json!(["ctrl+y", 7]), "test");
+        assert!(bad.is_none());
+    }
+
+    #[test]
+    fn test_conflict_overwrite_replace_semantics() {
+        let mut kb = KeyBindings::defaults();
+        let target = KeyAction::NewFile;
+        let conflict_bind = KeyBind::parse("ctrl+s").unwrap();
+
+        // Simulate overwrite-confirm flow:
+        if let Some(conflict_action) = kb.find_conflict(&conflict_bind, target) {
+            kb.remove_bind_from(conflict_action, &conflict_bind);
+        }
+        kb.map.insert(target, vec![conflict_bind.clone()]);
+
+        // Target action should now only have the new bind.
+        assert_eq!(kb.map.get(&target).cloned(), Some(vec![conflict_bind.clone()]));
+        // Old target bind should be gone.
+        let old_evt = KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL);
+        assert_ne!(kb.lookup(&old_evt, KeyScope::Global), Some(target));
+        // New bind should resolve to target action.
+        let new_evt = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+        assert_eq!(kb.lookup(&new_evt, KeyScope::Global), Some(target));
     }
 }

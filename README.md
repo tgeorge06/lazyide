@@ -4,6 +4,16 @@ Inspired by [lazygit](https://github.com/jesseduffield/lazygit) and [lazyssh](ht
 
 ![demo](demo.gif)
 
+## Features
+
+- **LSP** (rust-analyzer): diagnostics in gutter + status bar, completion, go-to-definition
+- **Syntax highlighting**: Rust, Python, JS/TS, Go, PHP, CSS/SCSS/SASS, HTML/XML, Shell, JSON/TOML/YAML, Markdown
+- **Code folding**: brace-based (Rust, JS, Go), indentation-based (Python), tag-based (HTML/XML)
+- **Bracket pair colorization**: `{}`, `()`, `[]` colored by nesting depth (3-color cycle per theme)
+- **27 themes**: loaded from `themes/*.json`, with live preview browser (`F5` > Theme). Falls back to built-in dark theme if none found
+- **Git branch**: shown in the top bar when inside a git repo
+- **Line numbers**: displayed in the editor gutter with diagnostic markers
+
 ## Install
 
 **macOS (Homebrew):**
@@ -63,30 +73,34 @@ This detects missing tools (rust-analyzer, ripgrep) and offers to install them a
 ### Global
 
 - `F1` / `F2` previous / next tab
-- `F3` toggle files pane
 - `F4` help
-- `F5` command palette
 - `Ctrl+S` save
 - `Ctrl+W` close active tab (with dirty check)
 - `Ctrl+Q` quit (two-step if unsaved)
 - `Ctrl+B` toggle files pane
 - `Ctrl+R` refresh tree
 - `Ctrl+N` new file
-- `Ctrl+P` quick open file (fuzzy search)
+- `Ctrl+O` quick open file (fuzzy search)
+- `Ctrl+P` command palette (also `Ctrl+Shift+P`)
 - `Ctrl+F` find in current file (regex)
 - `Ctrl+H` find and replace
 - `Ctrl+Shift+F` search in project (ripgrep)
-- `Ctrl+Shift+P` command palette
 - `Tab` focus tree / `Shift+Tab` focus editor
 
 ### Editor
 
 - `Ctrl+Space` or `Ctrl+.` LSP completion (ghost suggestion + Tab accept)
 - `Ctrl+D` go to definition (Rust LSP)
-- `Ctrl+Shift+{` / `}` fold / unfold current block
+- `Ctrl+G` go to line
+- `Ctrl+J` toggle fold at cursor
+- `Ctrl+U` toggle fold all / unfold all
+- `Ctrl+Shift+[` / `]` fold / unfold current block
+- `Ctrl+Alt+[` / `]` fold all / unfold all
+- `F3` / `Shift+F3` find next / previous
+- `PageUp` / `PageDown` scroll by page
+- `Ctrl+Home` / `Ctrl+End` go to start / end of file
 - `Shift+Alt+Down` / `Up` duplicate line
 - `Ctrl+Z` undo / `Ctrl+Y` redo
-- `Ctrl+G` / `Ctrl+Shift+G` find next / previous
 - `Ctrl+A` select all
 - `Ctrl+C` copy / `Ctrl+X` cut / `Ctrl+V` paste
 - `Ctrl+/` toggle line comment (language-aware)
@@ -117,6 +131,22 @@ This detects missing tools (rust-analyzer, ripgrep) and offers to install them a
 - Right-click in editor for edit menu (Copy, Cut, Paste, Select All)
 - Click fold gutter icons to toggle folds
 
+### Custom Keybindings
+
+All keyboard shortcuts can be remapped via `~/.config/lazyide/keybinds.json`. Only include the keys you want to override — missing actions keep their defaults.
+
+```json
+{
+  "save": "ctrl+s",
+  "redo": ["ctrl+shift+z", "ctrl+y"],
+  "fold_toggle": "ctrl+j"
+}
+```
+
+Values are a single string or array of strings. Keys are snake_case action names (e.g. `save`, `close_tab`, `go_to_definition`, `dup_line_down`).
+
+You can also open the **Keybind Editor** from the command palette (`Ctrl+P` > "Keybind Editor") to browse, remap, and reset keybindings interactively. Conflict detection warns you if a key is already in use.
+
 ### Unsaved safety
 
 - `Ctrl+Q` twice to quit with unsaved changes
@@ -127,16 +157,6 @@ This detects missing tools (rust-analyzer, ripgrep) and offers to install them a
 - Dirty buffers autosave every 2 seconds
 - Recovery prompt on reopen if autosave exists
 - Conflict prompt if file changes on disk while buffer is dirty: `R` reload, `K` keep local, `D` decide later
-
-## Features
-
-- **LSP** (rust-analyzer): diagnostics in gutter + status bar, completion, go-to-definition
-- **Syntax highlighting**: Rust, Python, JS/TS, Go, PHP, CSS/SCSS/SASS, HTML/XML, Shell, JSON/TOML/YAML, Markdown
-- **Code folding**: brace-based (Rust, JS, Go), indentation-based (Python), tag-based (HTML/XML)
-- **Bracket pair colorization**: `{}`, `()`, `[]` colored by nesting depth (3-color cycle per theme)
-- **27 themes**: loaded from `themes/*.json`, with live preview browser (`F5` > Theme). Falls back to built-in dark theme if none found
-- **Git branch**: shown in the top bar when inside a git repo
-- **Line numbers**: displayed in the editor gutter with diagnostic markers
 
 ## Contributing
 
