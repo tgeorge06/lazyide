@@ -133,6 +133,11 @@ This detects missing tools (rust-analyzer, ripgrep) and offers to install them a
 - **LSP** (rust-analyzer): diagnostics in gutter + status bar, completion, go-to-definition
 - **Syntax highlighting**: Rust, Python, JS/TS, Go, PHP, CSS/SCSS/SASS, HTML/XML, Shell, JSON/TOML/YAML, Markdown
 - **Code folding**: brace-based (Rust, JS, Go), indentation-based (Python), tag-based (HTML/XML)
+- **Bracket pair colorization**: `{}`, `()`, `[]` colored by nesting depth (3-color cycle per theme)
 - **27 themes**: loaded from `themes/*.json`, with live preview browser (`F5` > Theme). Falls back to built-in dark theme if none found
 - **Git branch**: shown in the top bar when inside a git repo
 - **Line numbers**: displayed in the editor gutter with diagnostic markers
+
+## Contributing
+
+Contributions welcome — especially new themes! See [CONTRIBUTING.md](CONTRIBUTING.md) for details.

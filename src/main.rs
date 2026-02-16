@@ -126,6 +126,9 @@ struct Theme {
     syntax_number: Color,
     syntax_tag: Color,
     syntax_attribute: Color,
+    bracket_1: Color,
+    bracket_2: Color,
+    bracket_3: Color,
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,6 +152,12 @@ struct ThemeColors {
     border: String,
     accent: String,
     selection: String,
+    #[serde(default)]
+    yellow: Option<String>,
+    #[serde(default)]
+    purple: Option<String>,
+    #[serde(default)]
+    cyan: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -221,6 +230,7 @@ struct Tab {
     open_disk_snapshot: Option<String>,
     editor_scroll_row: usize,
     fold_ranges: Vec<FoldRange>,
+    bracket_depths: Vec<u16>,
     folded_starts: HashSet<usize>,
     visible_rows_map: Vec<usize>,
     open_doc_uri: Option<String>,
@@ -1067,9 +1077,10 @@ impl App {
     fn recompute_folds(&mut self) {
         let Some(tab) = self.active_tab() else { return; };
         let lang = syntax_lang_for_path(Some(tab.path.as_path()));
-        let fold_ranges = compute_fold_ranges(self.tabs[self.active_tab].editor.lines(), lang);
+        let (fold_ranges, bracket_depths) = compute_fold_ranges(self.tabs[self.active_tab].editor.lines(), lang);
         let tab = &mut self.tabs[self.active_tab];
         tab.fold_ranges = fold_ranges;
+        tab.bracket_depths = bracket_depths;
         tab.folded_starts
             .retain(|start| tab.fold_ranges.iter().any(|r| r.start_line == *start));
         self.rebuild_visible_rows();
@@ -2724,7 +2735,7 @@ impl App {
         ta.set_cursor_line_style(Style::default().bg(self.active_theme().bg_alt));
 
         let lang = syntax_lang_for_path(Some(path.as_path()));
-        let fold_ranges = compute_fold_ranges(ta.lines(), lang);
+        let (fold_ranges, bracket_depths) = compute_fold_ranges(ta.lines(), lang);
         let mut visible_rows_map = Vec::new();
         for row in 0..ta.lines().len() {
             visible_rows_map.push(row);
@@ -2741,6 +2752,7 @@ impl App {
             open_disk_snapshot: Some(text),
             editor_scroll_row: 0,
             fold_ranges,
+            bracket_depths,
             folded_starts: HashSet::new(),
             visible_rows_map,
             open_doc_uri: None,
@@ -3933,12 +3945,15 @@ fn file_uri(path: &Path) -> Option<String> {
     Url::from_file_path(abs).ok().map(|u| u.to_string())
 }
 
-fn compute_fold_ranges(lines: &[String], lang: SyntaxLang) -> Vec<FoldRange> {
+fn compute_fold_ranges(lines: &[String], lang: SyntaxLang) -> (Vec<FoldRange>, Vec<u16>) {
     let mut ranges = Vec::new();
+    let mut bracket_depths: Vec<u16> = Vec::with_capacity(lines.len());
 
-    // Brace / bracket folding
+    // Brace / bracket folding + unified bracket depth tracking
     let mut stack: Vec<(char, usize)> = Vec::new();
+    let mut depth: u16 = 0;
     for (row, line) in lines.iter().enumerate() {
+        bracket_depths.push(depth);
         let mut in_string = false;
         let mut quote = '\0';
         let chars: Vec<char> = line.chars().collect();
@@ -3963,15 +3978,21 @@ fn compute_fold_ranges(lines: &[String], lang: SyntaxLang) -> Vec<FoldRange> {
                     i += 1;
                     continue;
                 }
-                if ch == '{' {
-                    stack.push((ch, row));
-                } else if ch == '}' {
-                    if let Some((_, start)) = stack.pop() {
-                        if row > start {
-                            ranges.push(FoldRange {
-                                start_line: start,
-                                end_line: row,
-                            });
+                if ch == '{' || ch == '(' || ch == '[' {
+                    if ch == '{' {
+                        stack.push((ch, row));
+                    }
+                    depth = depth.saturating_add(1);
+                } else if ch == '}' || ch == ')' || ch == ']' {
+                    depth = depth.saturating_sub(1);
+                    if ch == '}' {
+                        if let Some((_, start)) = stack.pop() {
+                            if row > start {
+                                ranges.push(FoldRange {
+                                    start_line: start,
+                                    end_line: row,
+                                });
+                            }
                         }
                     }
                 }
@@ -4057,7 +4078,7 @@ fn compute_fold_ranges(lines: &[String], lang: SyntaxLang) -> Vec<FoldRange> {
 
     ranges.sort_by_key(|r| (r.start_line, r.end_line));
     ranges.dedup_by(|a, b| a.start_line == b.start_line && a.end_line == b.end_line);
-    ranges
+    (ranges, bracket_depths)
 }
 
 fn syntax_lang_for_path(path: Option<&Path>) -> SyntaxLang {
@@ -4137,7 +4158,7 @@ fn comment_start_for_lang(lang: SyntaxLang) -> Option<&'static str> {
     }
 }
 
-fn highlight_line(line: &str, lang: SyntaxLang, theme: &Theme) -> Line<'static> {
+fn highlight_line(line: &str, lang: SyntaxLang, theme: &Theme, bracket_depth: u16, bracket_colors: &[Color; 3]) -> Line<'static> {
     let base = Style::default().fg(theme.fg);
     if lang == SyntaxLang::Plain {
         return Line::from(vec![Span::styled(line.to_string(), base)]);
@@ -4218,6 +4239,7 @@ fn highlight_line(line: &str, lang: SyntaxLang, theme: &Theme) -> Line<'static> 
     let bytes = line.as_bytes();
     let mut i = 0usize;
     let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut bd = bracket_depth;
     while i < bytes.len() {
         if let Some(comment) = comment_start_for_lang(lang) {
             if line[i..].starts_with(comment) {
@@ -4278,7 +4300,17 @@ fn highlight_line(line: &str, lang: SyntaxLang, theme: &Theme) -> Line<'static> 
             }
             continue;
         }
-        spans.push(Span::styled(ch.to_string(), base));
+        if ch == '{' || ch == '(' || ch == '[' {
+            let color = bracket_colors[(bd % 3) as usize];
+            spans.push(Span::styled(ch.to_string(), Style::default().fg(color)));
+            bd = bd.saturating_add(1);
+        } else if ch == '}' || ch == ')' || ch == ']' {
+            bd = bd.saturating_sub(1);
+            let color = bracket_colors[(bd % 3) as usize];
+            spans.push(Span::styled(ch.to_string(), Style::default().fg(color)));
+        } else {
+            spans.push(Span::styled(ch.to_string(), base));
+        }
         i += ch.len_utf8();
     }
     Line::from(spans)
@@ -4415,6 +4447,12 @@ fn theme_from_file(tf: ThemeFile) -> Theme {
             .map_or(Color::Rgb(86, 156, 214), |c| color_from_hex(c, Color::Rgb(86, 156, 214))),
         syntax_attribute: syn.and_then(|s| s.attribute.as_ref())
             .map_or(Color::Rgb(78, 201, 176), |c| color_from_hex(c, Color::Rgb(78, 201, 176))),
+        bracket_1: tf.colors.yellow.as_ref()
+            .map_or(Color::Rgb(210, 168, 75), |c| color_from_hex(c, Color::Rgb(210, 168, 75))),
+        bracket_2: tf.colors.purple.as_ref()
+            .map_or(Color::Rgb(176, 82, 204), |c| color_from_hex(c, Color::Rgb(176, 82, 204))),
+        bracket_3: tf.colors.cyan.as_ref()
+            .map_or(Color::Rgb(0, 175, 215), |c| color_from_hex(c, Color::Rgb(0, 175, 215))),
     }
 }
 
@@ -4660,7 +4698,7 @@ fn draw(app: &mut App, frame: &mut Frame<'_>) {
     if app.active_tab().is_some_and(|t| t.visible_rows_map.is_empty()) {
         app.rebuild_visible_rows();
     }
-    let (start_row, lines_src, selection, cursor_row, cursor_col, diagnostics_owned, fold_ranges_owned, folded_starts_owned, visible_rows_map_owned) = if let Some(tab) = app.active_tab() {
+    let (start_row, lines_src, selection, cursor_row, cursor_col, diagnostics_owned, fold_ranges_owned, folded_starts_owned, visible_rows_map_owned, bracket_depths_owned) = if let Some(tab) = app.active_tab() {
         let sr = tab.editor_scroll_row.min(tab.visible_rows_map.len().saturating_sub(1));
         // Only clone lines up to the highest visible row, not the entire buffer
         let max_row = tab.visible_rows_map.iter().copied().max().unwrap_or(0);
@@ -4676,9 +4714,10 @@ fn draw(app: &mut App, frame: &mut Frame<'_>) {
             tab.fold_ranges.clone(),
             tab.folded_starts.clone(),
             tab.visible_rows_map.clone(),
+            tab.bracket_depths.clone(),
         )
     } else {
-        (0, vec![String::new()], None, 0, 0, Vec::new(), Vec::new(), HashSet::new(), vec![0usize])
+        (0, vec![String::new()], None, 0, 0, Vec::new(), Vec::new(), HashSet::new(), vec![0usize], Vec::new())
     };
     let diagnostics_ref = &diagnostics_owned as &[LspDiagnostic];
     let fold_ranges_ref = &fold_ranges_owned as &[FoldRange];
@@ -4739,7 +4778,9 @@ fn draw(app: &mut App, frame: &mut Frame<'_>) {
         }
         spans.push(Span::raw(" "));
         let display_line = lines_src[row].replace('\t', "    ");
-        let hl = highlight_line(&display_line, lang, &theme);
+        let bracket_colors = [theme.bracket_1, theme.bracket_2, theme.bracket_3];
+        let bd = bracket_depths_owned.get(row).copied().unwrap_or(0);
+        let hl = highlight_line(&display_line, lang, &theme, bd, &bracket_colors);
         spans.extend(hl.spans);
         // Pad line to full width so stale characters from previous frame are overwritten
         let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
@@ -5463,6 +5504,8 @@ mod syntax_and_lang_tests {
     use std::path::Path;
     use ratatui::style::Color;
 
+    const BC: [Color; 3] = [Color::Rgb(210, 168, 75), Color::Rgb(176, 82, 204), Color::Rgb(0, 175, 215)];
+
     fn create_test_theme() -> Theme {
         Theme {
             name: "test_theme".to_string(),
@@ -5479,6 +5522,9 @@ mod syntax_and_lang_tests {
             syntax_number: Color::Rgb(181, 206, 168),
             syntax_tag: Color::Rgb(86, 156, 214),
             syntax_attribute: Color::Rgb(78, 201, 176),
+            bracket_1: Color::Rgb(210, 168, 75),
+            bracket_2: Color::Rgb(176, 82, 204),
+            bracket_3: Color::Rgb(0, 175, 215),
         }
     }
 
@@ -5747,60 +5793,60 @@ mod syntax_and_lang_tests {
     #[test]
     fn test_highlight_line_plain() {
         let theme = create_test_theme();
-        let result = highlight_line("this is plain text", SyntaxLang::Plain, &theme);
+        let result = highlight_line("this is plain text", SyntaxLang::Plain, &theme, 0, &BC);
         assert!(!result.spans.is_empty());
     }
 
     #[test]
     fn test_highlight_line_rust_keyword() {
         let theme = create_test_theme();
-        let result = highlight_line("fn main() {", SyntaxLang::Rust, &theme);
+        let result = highlight_line("fn main() {", SyntaxLang::Rust, &theme, 0, &BC);
         assert!(!result.spans.is_empty());
     }
 
     #[test]
     fn test_highlight_line_rust_comment() {
         let theme = create_test_theme();
-        let result = highlight_line("// this is a comment", SyntaxLang::Rust, &theme);
+        let result = highlight_line("// this is a comment", SyntaxLang::Rust, &theme, 0, &BC);
         assert!(!result.spans.is_empty());
     }
 
     #[test]
     fn test_highlight_line_rust_string() {
         let theme = create_test_theme();
-        let result = highlight_line(r#"let s = "hello world";"#, SyntaxLang::Rust, &theme);
+        let result = highlight_line(r#"let s = "hello world";"#, SyntaxLang::Rust, &theme, 0, &BC);
         assert!(!result.spans.is_empty());
     }
 
     #[test]
     fn test_highlight_line_python() {
         let theme = create_test_theme();
-        assert!(!highlight_line("def hello():", SyntaxLang::Python, &theme).spans.is_empty());
-        assert!(!highlight_line("# comment", SyntaxLang::Python, &theme).spans.is_empty());
+        assert!(!highlight_line("def hello():", SyntaxLang::Python, &theme, 0, &BC).spans.is_empty());
+        assert!(!highlight_line("# comment", SyntaxLang::Python, &theme, 0, &BC).spans.is_empty());
     }
 
     #[test]
     fn test_highlight_line_js_go_shell_css_php() {
         let theme = create_test_theme();
-        assert!(!highlight_line("function test() {", SyntaxLang::JsTs, &theme).spans.is_empty());
-        assert!(!highlight_line("package main", SyntaxLang::Go, &theme).spans.is_empty());
-        assert!(!highlight_line("if [ -f file ]; then", SyntaxLang::Shell, &theme).spans.is_empty());
-        assert!(!highlight_line("  display: flex;", SyntaxLang::Css, &theme).spans.is_empty());
-        assert!(!highlight_line("function test() {", SyntaxLang::Php, &theme).spans.is_empty());
+        assert!(!highlight_line("function test() {", SyntaxLang::JsTs, &theme, 0, &BC).spans.is_empty());
+        assert!(!highlight_line("package main", SyntaxLang::Go, &theme, 0, &BC).spans.is_empty());
+        assert!(!highlight_line("if [ -f file ]; then", SyntaxLang::Shell, &theme, 0, &BC).spans.is_empty());
+        assert!(!highlight_line("  display: flex;", SyntaxLang::Css, &theme, 0, &BC).spans.is_empty());
+        assert!(!highlight_line("function test() {", SyntaxLang::Php, &theme, 0, &BC).spans.is_empty());
     }
 
     #[test]
     fn test_highlight_line_markdown() {
         let theme = create_test_theme();
-        assert!(!highlight_line("# Heading 1", SyntaxLang::Markdown, &theme).spans.is_empty());
-        assert!(!highlight_line("Normal text", SyntaxLang::Markdown, &theme).spans.is_empty());
+        assert!(!highlight_line("# Heading 1", SyntaxLang::Markdown, &theme, 0, &BC).spans.is_empty());
+        assert!(!highlight_line("Normal text", SyntaxLang::Markdown, &theme, 0, &BC).spans.is_empty());
     }
 
     #[test]
     fn test_highlight_line_html() {
         let theme = create_test_theme();
-        assert!(!highlight_line("<div class=\"container\">", SyntaxLang::HtmlXml, &theme).spans.is_empty());
-        assert!(!highlight_line("<!-- comment -->", SyntaxLang::HtmlXml, &theme).spans.is_empty());
+        assert!(!highlight_line("<div class=\"container\">", SyntaxLang::HtmlXml, &theme, 0, &BC).spans.is_empty());
+        assert!(!highlight_line("<!-- comment -->", SyntaxLang::HtmlXml, &theme, 0, &BC).spans.is_empty());
     }
 
     #[test]
@@ -5823,6 +5869,30 @@ mod syntax_and_lang_tests {
             assert!(seen.insert(keyword), "Duplicate keyword: {}", keyword);
         }
     }
+
+    #[test]
+    fn test_bracket_pair_colorization() {
+        let theme = create_test_theme();
+        let bc = [theme.bracket_1, theme.bracket_2, theme.bracket_3];
+        // "{ ( ) }" — { at depth 0, ( at depth 1, ) at depth 1, } at depth 0
+        let result = highlight_line("{ ( ) }", SyntaxLang::Rust, &theme, 0, &bc);
+        let bracket_spans: Vec<_> = result.spans.iter()
+            .filter(|s| matches!(s.content.as_ref(), "{" | "}" | "(" | ")"))
+            .collect();
+        assert_eq!(bracket_spans.len(), 4);
+        // { and } should both be depth 0 → bracket_1 color
+        let open_brace = bracket_spans[0].style.fg;
+        let close_brace = bracket_spans[3].style.fg;
+        assert_eq!(open_brace, close_brace, "matching brackets should have same color");
+        assert_eq!(open_brace, Some(theme.bracket_1));
+        // ( and ) should both be depth 1 → bracket_2 color
+        let open_paren = bracket_spans[1].style.fg;
+        let close_paren = bracket_spans[2].style.fg;
+        assert_eq!(open_paren, close_paren, "matching brackets should have same color");
+        assert_eq!(open_paren, Some(theme.bracket_2));
+        // Different depths should differ
+        assert_ne!(open_brace, open_paren, "different depth brackets should have different colors");
+    }
 }
 
 #[cfg(test)]
@@ -5836,7 +5906,7 @@ mod fold_and_selection_tests {
             "    println!(\"Hello\");".to_string(),
             "}".to_string(),
         ];
-        let ranges = compute_fold_ranges(&lines, SyntaxLang::Rust);
+        let (ranges, _) = compute_fold_ranges(&lines, SyntaxLang::Rust);
         assert!(ranges.iter().any(|r| r.start_line == 0 && r.end_line == 2));
     }
 
@@ -5851,7 +5921,7 @@ mod fold_and_selection_tests {
             "    }".to_string(),
             "}".to_string(),
         ];
-        let ranges = compute_fold_ranges(&lines, SyntaxLang::JsTs);
+        let (ranges, _) = compute_fold_ranges(&lines, SyntaxLang::JsTs);
         assert!(ranges.iter().any(|r| r.start_line == 0 && r.end_line == 6));
         assert!(ranges.iter().any(|r| r.start_line == 1 && r.end_line == 3));
         assert!(ranges.iter().any(|r| r.start_line == 3 && r.end_line == 5));
@@ -5868,21 +5938,21 @@ mod fold_and_selection_tests {
             "    return 2".to_string(),
             "}".to_string(),
         ];
-        let ranges = compute_fold_ranges(&lines, SyntaxLang::Go);
+        let (ranges, _) = compute_fold_ranges(&lines, SyntaxLang::Go);
         assert!(ranges.iter().any(|r| r.start_line == 0 && r.end_line == 2));
         assert!(ranges.iter().any(|r| r.start_line == 4 && r.end_line == 6));
     }
 
     #[test]
     fn test_fold_ranges_empty_input() {
-        let ranges = compute_fold_ranges(&[], SyntaxLang::Rust);
+        let (ranges, _) = compute_fold_ranges(&[], SyntaxLang::Rust);
         assert_eq!(ranges.len(), 0);
     }
 
     #[test]
     fn test_fold_ranges_single_line_no_folds() {
         let lines = vec!["let x = 42;".to_string()];
-        let ranges = compute_fold_ranges(&lines, SyntaxLang::Rust);
+        let (ranges, _) = compute_fold_ranges(&lines, SyntaxLang::Rust);
         assert!(!ranges.iter().any(|r| r.start_line == 0 && r.end_line == 0));
     }
 
@@ -5895,7 +5965,7 @@ mod fold_and_selection_tests {
             "        let y = 2;".to_string(),
             "    }".to_string(),
         ];
-        let ranges = compute_fold_ranges(&lines, SyntaxLang::Rust);
+        let (ranges, _) = compute_fold_ranges(&lines, SyntaxLang::Rust);
         assert!(ranges.iter().any(|r| r.start_line == 2 && r.end_line == 4));
     }
 
@@ -5907,14 +5977,14 @@ mod fold_and_selection_tests {
             "    y: i32,".to_string(),
             "}".to_string(),
         ];
-        let ranges = compute_fold_ranges(&lines, SyntaxLang::Rust);
+        let (ranges, _) = compute_fold_ranges(&lines, SyntaxLang::Rust);
         assert!(ranges.iter().any(|r| r.start_line == 0 && r.end_line == 3));
     }
 
     #[test]
     fn test_fold_ranges_same_line_braces_no_fold() {
         let lines = vec!["fn test() { return 42; }".to_string()];
-        let ranges = compute_fold_ranges(&lines, SyntaxLang::Rust);
+        let (ranges, _) = compute_fold_ranges(&lines, SyntaxLang::Rust);
         assert!(!ranges.iter().any(|r| r.start_line == 0 && r.end_line == 0));
     }
 
@@ -5926,7 +5996,7 @@ mod fold_and_selection_tests {
             "    print(\"World\")".to_string(),
             "print(\"Done\")".to_string(),
         ];
-        let ranges = compute_fold_ranges(&lines, SyntaxLang::Python);
+        let (ranges, _) = compute_fold_ranges(&lines, SyntaxLang::Python);
         assert!(ranges.iter().any(|r| r.start_line == 0 && r.end_line == 2));
     }
 
@@ -5940,7 +6010,7 @@ mod fold_and_selection_tests {
             "        print(\"other\")".to_string(),
             "print(\"done\")".to_string(),
         ];
-        let ranges = compute_fold_ranges(&lines, SyntaxLang::Python);
+        let (ranges, _) = compute_fold_ranges(&lines, SyntaxLang::Python);
         assert!(ranges.iter().any(|r| r.start_line == 0 && r.end_line == 4));
         assert!(ranges.iter().any(|r| r.start_line == 1 && r.end_line == 2));
         assert!(ranges.iter().any(|r| r.start_line == 3 && r.end_line == 4));
@@ -5956,7 +6026,7 @@ mod fold_and_selection_tests {
             "        return self.x".to_string(),
             "print(\"done\")".to_string(),
         ];
-        let ranges = compute_fold_ranges(&lines, SyntaxLang::Python);
+        let (ranges, _) = compute_fold_ranges(&lines, SyntaxLang::Python);
         assert!(ranges.iter().any(|r| r.start_line == 0 && r.end_line == 4));
         assert!(ranges.iter().any(|r| r.start_line == 1 && r.end_line == 2));
         assert!(ranges.iter().any(|r| r.start_line == 3 && r.end_line == 4));
@@ -5971,7 +6041,7 @@ mod fold_and_selection_tests {
             "    y = 2".to_string(),
             "done()".to_string(),
         ];
-        let ranges = compute_fold_ranges(&lines, SyntaxLang::Python);
+        let (ranges, _) = compute_fold_ranges(&lines, SyntaxLang::Python);
         assert!(ranges.iter().any(|r| r.start_line == 0 && r.end_line == 3));
     }
 
@@ -5982,7 +6052,7 @@ mod fold_and_selection_tests {
             "    <p>Content</p>".to_string(),
             "</div>".to_string(),
         ];
-        let ranges = compute_fold_ranges(&lines, SyntaxLang::HtmlXml);
+        let (ranges, _) = compute_fold_ranges(&lines, SyntaxLang::HtmlXml);
         assert!(ranges.iter().any(|r| r.start_line == 0 && r.end_line == 2));
     }
 
@@ -5995,7 +6065,7 @@ mod fold_and_selection_tests {
             "    </body>".to_string(),
             "</html>".to_string(),
         ];
-        let ranges = compute_fold_ranges(&lines, SyntaxLang::HtmlXml);
+        let (ranges, _) = compute_fold_ranges(&lines, SyntaxLang::HtmlXml);
         assert!(ranges.iter().any(|r| r.start_line == 0 && r.end_line == 4));
         assert!(ranges.iter().any(|r| r.start_line == 1 && r.end_line == 3));
     }
@@ -6810,7 +6880,8 @@ mod lsp_and_struct_tests {
             path: PathBuf::from("/test/file.rs"), is_preview: false,
             editor: TextArea::default(), dirty: false,
             open_disk_snapshot: None, editor_scroll_row: 0,
-            fold_ranges: Vec::new(), folded_starts: HashSet::new(),
+            fold_ranges: Vec::new(), bracket_depths: Vec::new(),
+            folded_starts: HashSet::new(),
             visible_rows_map: Vec::new(), open_doc_uri: None,
             open_doc_version: 0, diagnostics: Vec::new(),
             conflict_prompt_open: false, conflict_disk_text: None,
@@ -6830,6 +6901,7 @@ mod lsp_and_struct_tests {
             editor, dirty: true,
             open_disk_snapshot: Some("old".to_string()), editor_scroll_row: 10,
             fold_ranges: vec![FoldRange { start_line: 5, end_line: 15 }],
+            bracket_depths: Vec::new(),
             folded_starts: { let mut s = HashSet::new(); s.insert(5); s },
             visible_rows_map: vec![0, 1, 2, 16, 17],
             open_doc_uri: Some("file:///src/main.rs".to_string()),
