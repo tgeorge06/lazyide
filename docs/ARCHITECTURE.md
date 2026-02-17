@@ -20,16 +20,16 @@ src/
   ui/
     mod.rs             Main draw() function (layout, tree pane, editor pane, bars)
     overlays.rs        Overlays: command palette, theme browser, help, prompts, etc.
-    helpers.rs         UI utilities (centered_rect, label helpers)
+    helpers.rs         UI utilities (centered_rect, label helpers, indent guides)
   keybinds.rs          KeyAction enum, KeyBind, KeyBindings, JSON load/save
   types.rs             Focus, PendingAction, PromptMode, CommandAction enums
-  tab.rs               Tab struct, FoldRange, ProjectSearchHit
+  tab.rs               Tab struct, FoldRange, ProjectSearchHit, GitLineStatus, GitFileStatus, GitChangeSummary
   tree_item.rs         TreeItem struct
   theme.rs             Theme structs, color parsing, theme loading
   syntax.rs            SyntaxLang, highlight_line(), keyword lists
   lsp_client.rs        LspClient (JSON-RPC over stdin/stdout), rust-analyzer spawning
   persistence.rs       PersistedState, state file paths, autosave paths
-  util.rs              Fold computation, fuzzy scoring, path helpers, geometry
+  util.rs              Fold computation, fuzzy scoring, path helpers, geometry, git diff/status parsing
 ```
 
 ## Key Design Decisions
@@ -75,14 +75,19 @@ Inside `handle_editor_key()`, editor-scoped keybinds are checked before falling 
 ```
 1. Layout         3-row vertical: top bar | main content | status bar
 2. Main split     If file tree open: [tree | divider | editor], else [editor]
-3. Top bar        "lazyide  root: ...  branch: ...  file: ..."
+3. Top bar        "lazyide  root: ...  file: ...  git: branch  Δ: ~M +A ?U"
+                  Git change summary shown when repo has uncommitted changes
 4. File tree      ListWidget with TreeItem names, indent by depth
+                  Files colored by git status (modified=yellow, added=green,
+                  untracked=muted), directories inherit highest child status
 5. Tab bar        Horizontal tab names with click rects, [x] close buttons
-6. Editor         Line-by-line rendering:
-                    - Line number (gutter)
-                    - Fold indicator (triangle)
-                    - Diagnostic marker (colored dot)
-                    - Syntax-highlighted text (via highlight_line())
+6. Editor         Line-by-line rendering (11-char gutter):
+                    - Line number (5 chars + space)
+                    - Fold indicator (triangle, 2 chars)
+                    - Diagnostic marker (colored dot, 1 char)
+                    - Git marker (+/~/-, 1 char, colored green/yellow/red)
+                    - Space separator (1 char)
+                    - Syntax-highlighted text with indent guides (│ at 4-space tab stops)
                     - Cursor row highlight, selection highlight
                     - Fold summary ("... [N lines]")
 7. Status bar     Dynamic keybind hints + status message + cursor position
@@ -119,6 +124,16 @@ Bracket colorization uses a depth counter computed per-file in `compute_fold_ran
 
 The tree is a flat `Vec<TreeItem>` built by `walk_dir()` (depth-first). Each item stores its `depth` for indentation. Expanded state is tracked in a `HashSet<PathBuf>`. The tree is rebuilt on file system changes (via `notify` crate watcher with 120ms debounce).
 
+## Git Integration
+
+Git status is computed by shelling out to `git` (no libgit2 dependency):
+
+- **Branch**: `git rev-parse --abbrev-ref HEAD` → top bar display
+- **File statuses**: `git status --porcelain -z` → NUL-separated parsing for safe handling of paths with spaces/special characters. Statuses propagate up to parent directories (Modified > Added > Untracked priority, matching VS Code behavior).
+- **Line statuses**: `git diff HEAD -- <file>` → unified diff hunk parsing. Falls back to `git status --porcelain` for untracked files (all lines marked Added). Stored per-tab in `Tab.git_line_status`.
+- **Change summary**: `GitChangeSummary` counts (modified/added/untracked) shown in top bar as `Δ: ~M +A ?U`.
+- **Refresh triggers**: file open, file save, and FS change events. FS refresh uses path-aware event coalescing — only affected tabs recompute line status, with full fallback for `.git/` changes or ambiguous events.
+
 ## Testing
 
 Tests are inline with source using `#[cfg(test)] mod tests`. Run with:
@@ -129,7 +144,7 @@ cargo test keybind      # tests matching "keybind"
 cargo test syntax       # tests matching "syntax"
 ```
 
-191 tests cover keybindings, syntax detection, highlighting, folding, theme loading, LSP message parsing, and utilities.
+210 tests cover keybindings, syntax detection, highlighting, folding, theme loading, LSP message parsing, git diff/status parsing, indent guides, and utilities.
 
 ## Adding a New Feature
 
