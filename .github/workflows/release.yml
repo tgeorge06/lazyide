@@ -87,3 +87,67 @@ jobs:
         with:
           files: "*.tar.gz"
           generate_release_notes: true
+
+  update-packages:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download release tarballs
+        run: |
+          gh release download "$GITHUB_REF_NAME" \
+            --repo tgeorge06/lazyide \
+            --pattern "*.tar.gz" \
+            --dir assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute SHA256 hashes
+        id: hashes
+        run: |
+          echo "macos_aarch64=$(sha256sum assets/lazyide-macos-aarch64.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "macos_x86_64=$(sha256sum assets/lazyide-macos-x86_64.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "windows_x86_64=$(sha256sum assets/lazyide-windows-x86_64.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Update Homebrew tap
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          AARCH64_HASH="${{ steps.hashes.outputs.macos_aarch64 }}"
+          X86_64_HASH="${{ steps.hashes.outputs.macos_x86_64 }}"
+
+          git clone https://x-access-token:${{ secrets.TAP_UPDATE_TOKEN }}@github.com/tgeorge06/homebrew-tap.git tap
+          cd tap
+
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" Formula/lazyide.rb
+          sed -i "s|releases/download/v[^/]*/|releases/download/v${VERSION}/|g" Formula/lazyide.rb
+          sed -i "/lazyide-macos-aarch64.tar.gz/{n;s/sha256 \".*\"/sha256 \"${AARCH64_HASH}\"/;}" Formula/lazyide.rb
+          sed -i "/lazyide-macos-x86_64.tar.gz/{n;s/sha256 \".*\"/sha256 \"${X86_64_HASH}\"/;}" Formula/lazyide.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/lazyide.rb
+          git commit -m "Update lazyide to v${VERSION}"
+          git push
+
+      - name: Update Scoop bucket
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          WIN_HASH="${{ steps.hashes.outputs.windows_x86_64 }}"
+
+          git clone https://x-access-token:${{ secrets.TAP_UPDATE_TOKEN }}@github.com/tgeorge06/scoop-bucket.git bucket
+          cd bucket
+
+          jq --arg v "$VERSION" --arg h "$WIN_HASH" '
+            .version = $v |
+            .architecture."64bit".url = "https://github.com/tgeorge06/lazyide/releases/download/v\($v)/lazyide-windows-x86_64.tar.gz" |
+            .architecture."64bit".hash = $h
+          ' lazyide.json > lazyide.json.tmp && mv lazyide.json.tmp lazyide.json
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add lazyide.json
+          git commit -m "Update lazyide to v${VERSION}"
+          git push
