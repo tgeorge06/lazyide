@@ -498,7 +498,8 @@ impl KeyBindings {
         bind(KeyAction::RefreshTree, "ctrl+r");
         bind(KeyAction::PrevTab, "f1");
         bind(KeyAction::NextTab, "f2");
-        bind(KeyAction::ToggleWordWrap, "ctrl+shift+w");
+        bind(KeyAction::ToggleWordWrap, "alt+z");
+        bind(KeyAction::ToggleWordWrap, "f6");
 
         // Editor
         bind(KeyAction::GoToDefinition, "ctrl+d");
