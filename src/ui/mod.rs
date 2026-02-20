@@ -569,7 +569,7 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
 
     let kb = &app.keybinds;
     let status = Paragraph::new(format!(
-        "{} Cmd   {} Open   {} Help   {} Files   {} Close   {} Save   {} Quit",
+        "{} Cmd   {} Open   {} Help   {} Files   {} Close   {} Save   {} Quit   {} Wrap:{}",
         kb.display_for(KeyAction::CommandPalette),
         kb.display_for(KeyAction::QuickOpen),
         kb.display_for(KeyAction::Help),
@@ -577,6 +577,8 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
         kb.display_for(KeyAction::CloseTab),
         kb.display_for(KeyAction::Save),
         kb.display_for(KeyAction::Quit),
+        kb.display_for(KeyAction::ToggleWordWrap),
+        if app.word_wrap { "on" } else { "off" },
     ))
     .style(Style::default().fg(theme.fg).bg(theme.bg_alt))
     .wrap(Wrap { trim: true })
