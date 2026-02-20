@@ -113,7 +113,7 @@ impl App {
             replace_after_find: false,
             git_branch: None,
             enhanced_keys: false,
-            word_wrap: true,
+            word_wrap: false,
             wrap_width_cache: usize::MAX,
             keybinds: load_keybindings(),
             keybind_editor: KeybindEditorState {

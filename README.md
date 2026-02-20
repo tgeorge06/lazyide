@@ -19,7 +19,7 @@ Inspired by [lazygit](https://github.com/jesseduffield/lazygit) and [lazyssh](ht
 - **Git file status**: file tree colors files by git status (modified=yellow, added=green, untracked=muted) with parent directory propagation
 - **Indent guides**: vertical guide lines at 4-space tab stops in indented code, with blank-line continuity
 - **Git branch & change summary**: branch name + change counts (`Δ: ~M +A ?U`) shown in the top bar
-- **Word wrap**: enabled by default with wrapped-line cursor/selection/mouse support, toggle with `Ctrl+Alt+W`
+- **Word wrap**: wrapped-line cursor/selection/mouse support, toggle with `Ctrl+Alt+W`
 - **Autosave & recovery**: dirty buffers saved every 2s, crash recovery on reopen
 - **POSIX trailing newline**: files always saved with a final newline
 
