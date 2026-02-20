@@ -27,6 +27,7 @@ pub(crate) enum KeyAction {
     RefreshTree,
     PrevTab,
     NextTab,
+    ToggleWordWrap,
     // Editor
     GoToDefinition,
     FoldToggle,
@@ -73,6 +74,7 @@ impl KeyAction {
                 | KeyAction::RefreshTree
                 | KeyAction::PrevTab
                 | KeyAction::NextTab
+                | KeyAction::ToggleWordWrap
         )
     }
 
@@ -97,6 +99,7 @@ impl KeyAction {
             KeyAction::RefreshTree => "Refresh Tree",
             KeyAction::PrevTab => "Previous Tab",
             KeyAction::NextTab => "Next Tab",
+            KeyAction::ToggleWordWrap => "Toggle Word Wrap",
             KeyAction::GoToDefinition => "Go to Definition",
             KeyAction::FoldToggle => "Toggle Fold",
             KeyAction::FoldAllToggle => "Toggle Fold All",
@@ -141,6 +144,7 @@ impl KeyAction {
             KeyAction::RefreshTree,
             KeyAction::PrevTab,
             KeyAction::NextTab,
+            KeyAction::ToggleWordWrap,
             KeyAction::GoToDefinition,
             KeyAction::FoldToggle,
             KeyAction::FoldAllToggle,
@@ -494,6 +498,7 @@ impl KeyBindings {
         bind(KeyAction::RefreshTree, "ctrl+r");
         bind(KeyAction::PrevTab, "f1");
         bind(KeyAction::NextTab, "f2");
+        bind(KeyAction::ToggleWordWrap, "ctrl+alt+w");
 
         // Editor
         bind(KeyAction::GoToDefinition, "ctrl+d");

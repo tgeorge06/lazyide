@@ -20,9 +20,14 @@ use crate::syntax::{highlight_line, syntax_lang_for_path};
 use crate::tab::{FoldRange, GitLineStatus};
 use crate::types::Focus;
 use crate::types::PendingAction;
-use crate::util::{relative_path, row_has_selection};
+use crate::util::{relative_path, segment_has_selection};
 use helpers::apply_indent_guides;
 use overlays::*;
+
+fn slice_chars(s: &str, start: usize, end: usize) -> String {
+    let count = end.saturating_sub(start);
+    s.chars().skip(start).take(count).collect()
+}
 
 pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
     let theme = app.active_theme().clone();
@@ -243,6 +248,13 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
     }
 
     frame.render_widget(Clear, inner);
+    let wrap_width = inner.width.saturating_sub(App::EDITOR_GUTTER_WIDTH) as usize;
+    if app.wrap_width_cache != wrap_width {
+        app.wrap_width_cache = wrap_width;
+        if app.word_wrap {
+            app.rebuild_visible_rows();
+        }
+    }
     let lang = syntax_lang_for_path(app.open_path().map(|p| p.as_path()));
     let visible_rows = inner.height as usize;
     if app
@@ -261,6 +273,8 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
         fold_ranges_owned,
         folded_starts_owned,
         visible_rows_map_owned,
+        visible_row_starts_owned,
+        visible_row_ends_owned,
         bracket_depths_owned,
         git_line_status_owned,
     ) = if let Some(tab) = app.active_tab() {
@@ -281,6 +295,8 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
             tab.fold_ranges.clone(),
             tab.folded_starts.clone(),
             tab.visible_rows_map.clone(),
+            tab.visible_row_starts.clone(),
+            tab.visible_row_ends.clone(),
             tab.bracket_depths.clone(),
             tab.git_line_status.clone(),
         )
@@ -295,6 +311,8 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
             Vec::new(),
             HashSet::new(),
             vec![0usize],
+            vec![0usize],
+            vec![0usize],
             Vec::new(),
             Vec::new(),
         )
@@ -303,6 +321,8 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
     let fold_ranges_ref = &fold_ranges_owned as &[FoldRange];
     let folded_starts_ref = &folded_starts_owned;
     let visible_rows_map_ref = &visible_rows_map_owned as &[usize];
+    let visible_row_starts_ref = &visible_row_starts_owned as &[usize];
+    let visible_row_ends_ref = &visible_row_ends_owned as &[usize];
     let inner_w = inner.width as usize;
     let blank_line = Line::from(Span::styled(
         " ".repeat(inner_w),
@@ -350,12 +370,25 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
             lines_out.push(blank_line.clone());
             continue;
         };
+        let seg_start = visible_row_starts_ref
+            .get(visible_idx)
+            .copied()
+            .unwrap_or(0);
+        let seg_end = visible_row_ends_ref
+            .get(visible_idx)
+            .copied()
+            .unwrap_or(seg_start);
+        let is_first_segment = seg_start == 0;
         if row >= lines_src.len() {
             lines_out.push(blank_line.clone());
             continue;
         }
         let mut spans = Vec::new();
-        let line_num = format!("{:>5} ", row + 1);
+        let line_num = if is_first_segment {
+            format!("{:>5} ", row + 1)
+        } else {
+            "      ".to_string()
+        };
         let line_num_style = if row == cursor_row {
             Style::default().fg(theme.accent)
         } else {
@@ -363,7 +396,7 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
         };
         spans.push(Span::styled(line_num, line_num_style));
 
-        let fold_indicator =
+        let fold_indicator = if is_first_segment {
             if let Some(fr) = fold_ranges_ref.iter().find(|fr| fr.start_line == row) {
                 if folded_starts_ref.contains(&fr.start_line) {
                     "▸ "
@@ -372,7 +405,10 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
                 }
             } else {
                 "  "
-            };
+            }
+        } else {
+            "  "
+        };
         spans.push(Span::styled(
             fold_indicator,
             Style::default()
@@ -381,21 +417,29 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
         ));
 
         let diag_for_row = diagnostics_ref.iter().find(|d| d.line == row + 1);
-        if let Some(diag) = diag_for_row {
-            let color = match diag.severity.as_str() {
-                "error" => Color::Red,
-                "warning" => Color::Yellow,
-                "info" => Color::Cyan,
-                _ => Color::Blue,
-            };
-            spans.push(Span::styled("●", Style::default().fg(color)));
+        if is_first_segment {
+            if let Some(diag) = diag_for_row {
+                let color = match diag.severity.as_str() {
+                    "error" => Color::Red,
+                    "warning" => Color::Yellow,
+                    "info" => Color::Cyan,
+                    _ => Color::Blue,
+                };
+                spans.push(Span::styled("●", Style::default().fg(color)));
+            } else {
+                spans.push(Span::raw(" "));
+            }
         } else {
             spans.push(Span::raw(" "));
         }
-        let git_status = git_line_status_owned
-            .get(row)
-            .copied()
-            .unwrap_or(GitLineStatus::None);
+        let git_status = if is_first_segment {
+            git_line_status_owned
+                .get(row)
+                .copied()
+                .unwrap_or(GitLineStatus::None)
+        } else {
+            GitLineStatus::None
+        };
         match git_status {
             GitLineStatus::Added => {
                 spans.push(Span::styled("+", Style::default().fg(Color::Green)));
@@ -412,11 +456,16 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
         }
         spans.push(Span::raw(" "));
         let display_line = lines_src[row].replace('\t', "    ");
+        let segment_text = slice_chars(&display_line, seg_start, seg_end);
         let bracket_colors = [theme.bracket_1, theme.bracket_2, theme.bracket_3];
         let bd = bracket_depths_owned.get(row).copied().unwrap_or(0);
-        let hl = highlight_line(&display_line, lang, &theme, bd, &bracket_colors);
+        let hl = highlight_line(&segment_text, lang, &theme, bd, &bracket_colors);
         let guide_depth = indent_depths.get(row).copied().unwrap_or(0);
-        let content_spans = apply_indent_guides(hl.spans, guide_depth, guide_style);
+        let content_spans = if is_first_segment {
+            apply_indent_guides(hl.spans, guide_depth, guide_style)
+        } else {
+            hl.spans
+        };
         spans.extend(content_spans);
         // Pad line to full width so stale characters from previous frame are overwritten
         let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
@@ -435,21 +484,24 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
         } else {
             hl
         };
-        let hl = if row == cursor_row {
+        let line_len_chars = lines_src[row].chars().count();
+        let cursor_on_segment = row == cursor_row
+            && cursor_col >= seg_start
+            && (cursor_col < seg_end || (cursor_col == seg_end && seg_end == line_len_chars));
+        let hl = if cursor_on_segment {
             hl.patch_style(Style::default().bg(theme.bg_alt))
         } else {
             hl
         };
-        let hl = if selection.is_some()
-            && row_has_selection(row, lines_src[row].chars().count(), selection)
-        {
+        let hl = if segment_has_selection(row, seg_start, seg_end, selection) {
             hl.patch_style(Style::default().bg(theme.selection))
         } else {
             hl
         };
-        if let Some(fr) = fold_ranges_ref
-            .iter()
-            .find(|fr| fr.start_line == row && folded_starts_ref.contains(&fr.start_line))
+        if is_first_segment
+            && let Some(fr) = fold_ranges_ref
+                .iter()
+                .find(|fr| fr.start_line == row && folded_starts_ref.contains(&fr.start_line))
         {
             let folded = fr.end_line.saturating_sub(fr.start_line);
             let mut spans = hl.spans;
@@ -465,14 +517,25 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
     let editor_text = Paragraph::new(lines_out).style(Style::default().bg(theme.bg).fg(theme.fg));
     frame.render_widget(editor_text, inner);
     if app.focus == Focus::Editor {
-        let cursor_visible = app.visible_index_of_source_row(cursor_row);
+        let cursor_visible = app.visible_index_of_source_position(cursor_row, cursor_col);
         let cursor_y = cursor_visible.saturating_sub(start_row);
         if cursor_y < visible_rows {
+            let seg_start = visible_row_starts_ref
+                .get(cursor_visible)
+                .copied()
+                .unwrap_or(0);
+            let seg_end = visible_row_ends_ref
+                .get(cursor_visible)
+                .copied()
+                .unwrap_or(seg_start);
             let max_x = inner
                 .width
                 .saturating_sub(1)
                 .saturating_sub(App::EDITOR_GUTTER_WIDTH) as usize;
-            let cursor_x = cursor_col.min(max_x);
+            let logical_x = cursor_col
+                .clamp(seg_start, seg_end)
+                .saturating_sub(seg_start);
+            let cursor_x = logical_x.min(max_x);
             if let Some(ghost) = app.completion.ghost.as_ref() {
                 if !ghost.is_empty()
                     && (cursor_x as u16 + App::EDITOR_GUTTER_WIDTH) < inner.width.saturating_sub(1)
