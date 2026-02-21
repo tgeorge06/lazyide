@@ -377,13 +377,28 @@ impl KeyBind {
     fn format_bind(&self, uppercase: bool) -> String {
         let mut parts = Vec::new();
         if self.modifiers.contains(KeyModifiers::CONTROL) {
-            parts.push(if uppercase { "Ctrl" } else { "ctrl" }.to_string());
+            let label = if cfg!(target_os = "macos") {
+                if uppercase { "⌃" } else { "⌃" }
+            } else {
+                if uppercase { "Ctrl" } else { "ctrl" }
+            };
+            parts.push(label.to_string());
         }
         if self.modifiers.contains(KeyModifiers::SHIFT) {
-            parts.push(if uppercase { "Shift" } else { "shift" }.to_string());
+            let label = if cfg!(target_os = "macos") {
+                if uppercase { "⇧" } else { "⇧" }
+            } else {
+                if uppercase { "Shift" } else { "shift" }
+            };
+            parts.push(label.to_string());
         }
         if self.modifiers.contains(KeyModifiers::ALT) {
-            parts.push(if uppercase { "Alt" } else { "alt" }.to_string());
+            let label = if cfg!(target_os = "macos") {
+                if uppercase { "⌥" } else { "⌥" }
+            } else {
+                if uppercase { "Alt" } else { "alt" }
+            };
+            parts.push(label.to_string());
         }
         parts.push(self.format_key_name(uppercase));
         parts.join("+")
