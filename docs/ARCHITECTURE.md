@@ -20,10 +20,10 @@ src/
   ui/
     mod.rs             Main draw() function (layout, tree pane, editor pane, bars)
     overlays.rs        Overlays: command palette, theme browser, help, prompts, etc.
-    helpers.rs         UI utilities (centered_rect, label helpers, indent guides)
+    helpers.rs         UI utilities (centered_rect, label helpers, indent guides, horizontal span clipping)
   keybinds.rs          KeyAction enum, KeyBind, KeyBindings, JSON load/save
   types.rs             Focus, PendingAction, PromptMode, CommandAction enums
-  tab.rs               Tab struct, FoldRange, ProjectSearchHit, GitLineStatus, GitFileStatus, GitChangeSummary
+  tab.rs               Tab struct (incl. editor_scroll_col for horizontal scroll), FoldRange, ProjectSearchHit, GitLineStatus, GitFileStatus, GitChangeSummary
   tree_item.rs         TreeItem struct
   theme.rs             Theme structs, color parsing, theme loading
   syntax.rs            SyntaxLang, highlight_line(), keyword lists
@@ -88,6 +88,7 @@ Inside `handle_editor_key()`, editor-scoped keybinds are checked before falling 
                     - Git marker (+/~/-, 1 char, colored green/yellow/red)
                     - Space separator (1 char)
                     - Syntax-highlighted text with indent guides (│ at 4-space tab stops)
+                    - Horizontal scroll clipping (when word wrap off, via clip_spans_by_columns)
                     - Cursor row highlight, selection highlight
                     - Fold summary ("... [N lines]")
 7. Status bar     Dynamic keybind hints + status message + cursor position
@@ -144,7 +145,7 @@ cargo test keybind      # tests matching "keybind"
 cargo test syntax       # tests matching "syntax"
 ```
 
-210 tests cover keybindings, syntax detection, highlighting, folding, theme loading, LSP message parsing, git diff/status parsing, indent guides, and utilities.
+258 tests cover keybindings, syntax detection, highlighting, folding, theme loading, LSP message parsing, git diff/status parsing, indent guides, and utilities.
 
 ## Adding a New Feature
 
