@@ -625,20 +625,49 @@ pub(crate) fn row_has_selection(
 }
 
 pub(crate) fn wrap_segments_for_line(line: &str, wrap_width: usize) -> Vec<(usize, usize)> {
-    let len = line.chars().count();
+    use unicode_width::UnicodeWidthChar;
+
+    let chars: Vec<char> = line.chars().collect();
+    let len = chars.len();
     if len == 0 {
         return vec![(0, 0)];
     }
-    if wrap_width == 0 || wrap_width == usize::MAX || len <= wrap_width {
+    if wrap_width == 0 || wrap_width == usize::MAX {
         return vec![(0, len)];
     }
 
-    let chars: Vec<char> = line.chars().collect();
+    // Precompute cumulative display widths so we can quickly measure any
+    // slice.  cum_width[i] = display width of chars[0..i].
+    let mut cum_width = Vec::with_capacity(len + 1);
+    cum_width.push(0usize);
+    for &ch in &chars {
+        let w = UnicodeWidthChar::width(ch).unwrap_or(0);
+        cum_width.push(cum_width.last().unwrap() + w);
+    }
+    let total_width = *cum_width.last().unwrap();
+
+    if total_width <= wrap_width {
+        return vec![(0, len)];
+    }
+
     let mut segments = Vec::new();
     let mut start = 0usize;
     while start < len {
-        let hard_end = (start + wrap_width).min(len);
+        let start_w = cum_width[start];
+        // Find the furthest char index whose display width fits within wrap_width.
+        let mut hard_end = start;
+        for i in (start + 1)..=len {
+            if cum_width[i] - start_w > wrap_width {
+                break;
+            }
+            hard_end = i;
+        }
+        // If nothing fits (single char wider than wrap_width), take at least one char.
+        if hard_end <= start {
+            hard_end = (start + 1).min(len);
+        }
         let mut end = hard_end;
+        // Try to break at a word boundary.
         if hard_end < len {
             for i in ((start + 1)..hard_end).rev() {
                 if chars[i].is_whitespace() {
@@ -648,7 +677,7 @@ pub(crate) fn wrap_segments_for_line(line: &str, wrap_width: usize) -> Vec<(usiz
             }
         }
         if end <= start {
-            end = hard_end.max(start + 1).min(len);
+            end = hard_end;
         }
         segments.push((start, end));
         start = end;
@@ -1201,6 +1230,113 @@ mod fold_and_selection_tests {
         assert!(segment_has_selection(2, 0, 10, sel));
         assert!(segment_has_selection(3, 0, 3, sel));
         assert!(!segment_has_selection(3, 3, 8, sel));
+    }
+
+    // ── Unicode / wide-character wrapping ──
+
+    #[test]
+    fn test_wrap_segments_wide_chars_cjk() {
+        // CJK characters are 2 cells wide each.
+        // "你好世界" = 4 chars, 8 display cells.
+        // With wrap_width=5, first segment can fit "你好" (4 cells) but not
+        // "你好世" (6 cells), so it should break after 2 chars.
+        let segs = wrap_segments_for_line("你好世界", 5);
+        assert_eq!(segs, vec![(0, 2), (2, 4)]);
+    }
+
+    #[test]
+    fn test_wrap_segments_mixed_ascii_and_wide() {
+        // "hi你好" = 4 chars, 2+2+2 = 6 display cells for "hi你" would be 4 cells
+        // wrap_width=4: "hi你" = 4 cells fits, "hi你好" = 6 cells doesn't
+        let segs = wrap_segments_for_line("hi你好", 4);
+        assert_eq!(segs, vec![(0, 3), (3, 4)]);
+    }
+
+    #[test]
+    fn test_wrap_segments_emoji() {
+        // Most emoji are 2 cells wide.
+        // "a😀b😀c" = 5 chars, 1+2+1+2+1 = 7 display cells
+        let segs = wrap_segments_for_line("a😀b😀c", 4);
+        // "a😀" = 3 cells, "a😀b" = 4 cells fits
+        // next: "😀c" = 3 cells fits
+        assert_eq!(segs, vec![(0, 3), (3, 5)]);
+    }
+
+    #[test]
+    fn test_wrap_segments_single_wide_char_exceeds_width() {
+        // A single wide char (2 cells) with wrap_width=1 should still take at
+        // least one char per segment (no infinite loop).
+        let segs = wrap_segments_for_line("你好", 1);
+        assert_eq!(segs, vec![(0, 1), (1, 2)]);
+    }
+
+    #[test]
+    fn test_wrap_segments_no_wrap_needed() {
+        let segs = wrap_segments_for_line("hello", 10);
+        assert_eq!(segs, vec![(0, 5)]);
+    }
+
+    #[test]
+    fn test_wrap_segments_exact_width() {
+        // Line display width equals wrap width — no wrapping.
+        let segs = wrap_segments_for_line("abcde", 5);
+        assert_eq!(segs, vec![(0, 5)]);
+    }
+
+    #[test]
+    fn test_wrap_segments_word_boundary_break() {
+        // "hello world" = 11 chars, wrap at 8.
+        // Should prefer breaking at the space: "hello " (6) then "world" (5).
+        let segs = wrap_segments_for_line("hello world", 8);
+        assert_eq!(segs, vec![(0, 6), (6, 11)]);
+    }
+
+    #[test]
+    fn test_wrap_segments_no_spaces_hard_break() {
+        // "abcdefghij" = 10 chars, no spaces, wrap at 4.
+        let segs = wrap_segments_for_line("abcdefghij", 4);
+        assert_eq!(segs, vec![(0, 4), (4, 8), (8, 10)]);
+    }
+
+    #[test]
+    fn test_wrap_segments_zero_width() {
+        // wrap_width=0 should disable wrapping.
+        let segs = wrap_segments_for_line("hello", 0);
+        assert_eq!(segs, vec![(0, 5)]);
+    }
+
+    #[test]
+    fn test_wrap_segments_tabs_as_spaces() {
+        // Tabs should be replaced before wrapping in practice, but the function
+        // operates on the already-replaced string. Test with spaces directly.
+        let line = "a   b   c"; // simulating tab->4-space replacement
+        let segs = wrap_segments_for_line(line, 5);
+        // "a   " = 4 cells, word break at space index 3 → break at 4
+        // "b   c" = 5 cells, fits in width 5 → single segment
+        assert_eq!(segs, vec![(0, 4), (4, 9)]);
+    }
+
+    // ── segment_has_selection edge cases ──
+
+    #[test]
+    fn test_segment_has_selection_no_selection() {
+        assert!(!segment_has_selection(0, 0, 10, None));
+    }
+
+    #[test]
+    fn test_segment_has_selection_exact_boundaries() {
+        // Selection starts exactly at segment end — no overlap
+        assert!(!segment_has_selection(5, 0, 10, Some(((5, 10), (5, 15)))));
+        // Selection ends exactly at segment start — no overlap
+        assert!(!segment_has_selection(5, 10, 20, Some(((5, 0), (5, 10)))));
+    }
+
+    #[test]
+    fn test_segment_has_selection_wrapped_continuation() {
+        // Simulate a selection spanning wrapped segments of the same row:
+        // Row 3 wraps into (0,20) and (20,40). Selection is (3,15)-(3,25).
+        assert!(segment_has_selection(3, 0, 20, Some(((3, 15), (3, 25)))));
+        assert!(segment_has_selection(3, 20, 40, Some(((3, 15), (3, 25)))));
     }
 
     #[test]

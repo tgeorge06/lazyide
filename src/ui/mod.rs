@@ -252,6 +252,10 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
     if app.wrap_width_cache != wrap_width {
         app.wrap_width_cache = wrap_width;
         if app.word_wrap {
+            // Debounce: schedule a rebuild for all tabs after resizing settles.
+            // Rebuild the active tab immediately so the current view stays correct.
+            app.wrap_rebuild_deadline =
+                Some(std::time::Instant::now() + std::time::Duration::from_millis(80));
             app.rebuild_visible_rows();
         }
     }
@@ -428,7 +432,7 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
                 "  "
             }
         } else {
-            "  "
+            "↪ "
         };
         spans.push(Span::styled(
             fold_indicator,

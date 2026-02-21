@@ -120,6 +120,7 @@ impl App {
             enhanced_keys: false,
             word_wrap: false,
             wrap_width_cache: usize::MAX,
+            wrap_rebuild_deadline: None,
             keybinds: load_keybindings(),
             keybind_editor: KeybindEditorState {
                 open: false,
@@ -396,12 +397,7 @@ impl App {
     pub(crate) fn toggle_word_wrap(&mut self) {
         self.word_wrap = !self.word_wrap;
         self.wrap_width_cache = self.editor_wrap_width_chars();
-        let previous_active = self.active_tab;
-        for i in 0..self.tabs.len() {
-            self.active_tab = i;
-            self.rebuild_visible_rows();
-        }
-        self.active_tab = previous_active.min(self.tabs.len().saturating_sub(1));
+        self.rebuild_all_visible_rows();
         self.sync_editor_scroll_guess();
         self.persist_state();
         if self.word_wrap {
@@ -688,6 +684,26 @@ impl App {
         }
         let max_scroll = tab.visible_rows_map.len().saturating_sub(1);
         tab.editor_scroll_row = tab.editor_scroll_row.min(max_scroll);
+    }
+
+    pub(crate) fn rebuild_all_visible_rows(&mut self) {
+        let prev = self.active_tab;
+        for i in 0..self.tabs.len() {
+            self.active_tab = i;
+            self.rebuild_visible_rows();
+        }
+        self.active_tab = prev.min(self.tabs.len().saturating_sub(1));
+    }
+
+    /// Called from the main loop to flush any pending wrap rebuild after a
+    /// resize has settled.
+    pub(crate) fn poll_wrap_rebuild(&mut self) {
+        if let Some(deadline) = self.wrap_rebuild_deadline {
+            if Instant::now() >= deadline {
+                self.wrap_rebuild_deadline = None;
+                self.rebuild_all_visible_rows();
+            }
+        }
     }
 
     fn editor_wrap_width_chars(&self) -> usize {
@@ -1031,5 +1047,140 @@ mod tests {
         let tab = app.active_tab().expect("tab");
         assert_eq!(tab.git_line_status[0], crate::tab::GitLineStatus::Added);
         assert_eq!(tab.git_line_status[1], crate::tab::GitLineStatus::Modified);
+    }
+
+    // ── Word wrap rebuild tests ──
+
+    #[test]
+    fn rebuild_visible_rows_with_word_wrap_creates_segments() {
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path();
+        let file = root.join("test.txt");
+        // A line that's wider than a small wrap width
+        fs::write(&file, "hello world this is a long line\nshort\n").expect("write");
+        let mut app = new_app(root);
+        app.open_file(file).expect("open");
+        app.word_wrap = true;
+        // Simulate a narrow editor (wrap_width ~ 10 chars)
+        app.editor_rect = Rect::new(0, 0, 22, 20); // 22 - 2 border - 10 gutter = 10
+        app.rebuild_visible_rows();
+        let tab = app.active_tab().expect("tab");
+        // The long line should produce multiple segments (source row 0 appears more than once)
+        let row0_count = tab.visible_rows_map.iter().filter(|&&r| r == 0).count();
+        assert!(row0_count > 1, "long line should wrap into multiple segments");
+        // The short line should produce a single segment
+        let row1_count = tab.visible_rows_map.iter().filter(|&&r| r == 1).count();
+        assert_eq!(row1_count, 1, "short line should be a single segment");
+        // Segment arrays should all be the same length
+        assert_eq!(tab.visible_rows_map.len(), tab.visible_row_starts.len());
+        assert_eq!(tab.visible_rows_map.len(), tab.visible_row_ends.len());
+    }
+
+    #[test]
+    fn rebuild_visible_rows_wrap_disabled_no_segments() {
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path();
+        let file = root.join("test.txt");
+        fs::write(&file, "hello world this is a long line\nshort\n").expect("write");
+        let mut app = new_app(root);
+        app.open_file(file).expect("open");
+        app.word_wrap = false;
+        app.rebuild_visible_rows();
+        let tab = app.active_tab().expect("tab");
+        // Without wrap, each source line maps to exactly one visual row
+        let row0_count = tab.visible_rows_map.iter().filter(|&&r| r == 0).count();
+        assert_eq!(row0_count, 1);
+    }
+
+    #[test]
+    fn rebuild_all_visible_rows_updates_inactive_tabs() {
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path();
+        let file1 = root.join("a.txt");
+        let file2 = root.join("b.txt");
+        fs::write(&file1, "hello world this is long\n").expect("write");
+        fs::write(&file2, "another long line here too\n").expect("write");
+        let mut app = new_app(root);
+        app.open_file(file1).expect("open");
+        app.open_file(file2).expect("open");
+        app.word_wrap = true;
+        app.editor_rect = Rect::new(0, 0, 22, 20); // wrap_width ~ 10
+        // Only active tab (tab 1) should have been rebuilt by previous opens
+        // Now rebuild all:
+        app.rebuild_all_visible_rows();
+        // Both tabs should have valid visible_rows_map
+        assert!(!app.tabs[0].visible_rows_map.is_empty());
+        assert!(!app.tabs[1].visible_rows_map.is_empty());
+        // Segment arrays should be consistent for both tabs
+        for tab in &app.tabs {
+            assert_eq!(tab.visible_rows_map.len(), tab.visible_row_starts.len());
+            assert_eq!(tab.visible_rows_map.len(), tab.visible_row_ends.len());
+        }
+    }
+
+    #[test]
+    fn rebuild_visible_rows_fold_plus_wrap_interaction() {
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path();
+        let file = root.join("test.rs");
+        // 6 lines (0-5): fold range covers lines 0-3, so folding hides 1,2,3
+        fs::write(
+            &file,
+            "fn main() {\n    a very long body line that should wrap\n    short\n}\nfn other() {}\nextra\n",
+        )
+        .expect("write");
+        let mut app = new_app(root);
+        app.open_file(file).expect("open");
+        app.word_wrap = true;
+        app.editor_rect = Rect::new(0, 0, 22, 20); // wrap_width ~ 10
+        // Fold the function body (lines 1-3 hidden, fold range 0..3)
+        app.tabs[app.active_tab].folded_starts.insert(0);
+        app.rebuild_visible_rows();
+        let tab = app.active_tab().expect("tab");
+        // Folded interior lines should NOT appear
+        assert!(!tab.visible_rows_map.contains(&1));
+        assert!(!tab.visible_rows_map.contains(&2));
+        assert!(!tab.visible_rows_map.contains(&3));
+        // Fold header (line 0) and lines after fold (4, 5) should appear
+        assert!(tab.visible_rows_map.contains(&0));
+        assert!(tab.visible_rows_map.contains(&4));
+        assert!(tab.visible_rows_map.contains(&5));
+    }
+
+    #[test]
+    fn wrap_rebuild_deadline_initialized_none() {
+        let tmp = tempdir().expect("tempdir");
+        let app = new_app(tmp.path());
+        assert!(app.wrap_rebuild_deadline.is_none());
+    }
+
+    #[test]
+    fn poll_wrap_rebuild_fires_after_deadline() {
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path();
+        let file = root.join("test.txt");
+        fs::write(&file, "content\n").expect("write");
+        let mut app = new_app(root);
+        app.open_file(file).expect("open");
+        app.word_wrap = true;
+        // Set deadline in the past so it fires immediately
+        app.wrap_rebuild_deadline =
+            Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
+        app.poll_wrap_rebuild();
+        assert!(app.wrap_rebuild_deadline.is_none(), "deadline should be cleared");
+    }
+
+    #[test]
+    fn poll_wrap_rebuild_skips_before_deadline() {
+        let tmp = tempdir().expect("tempdir");
+        let mut app = new_app(tmp.path());
+        // Set deadline far in the future
+        app.wrap_rebuild_deadline =
+            Some(std::time::Instant::now() + std::time::Duration::from_secs(60));
+        app.poll_wrap_rebuild();
+        assert!(
+            app.wrap_rebuild_deadline.is_some(),
+            "deadline should NOT be cleared yet"
+        );
     }
 }

@@ -645,7 +645,20 @@ impl App {
             .unwrap_or(seg_start);
         let text_x = inner_x.saturating_sub(Self::EDITOR_GUTTER_WIDTH as usize);
         let max_col = lines[row].chars().count();
-        let col = seg_start.saturating_add(text_x).min(seg_end).min(max_col);
+        // text_x is in screen columns; map to char index within the segment
+        // by walking chars and accumulating display width.
+        let chars: Vec<char> = lines[row].chars().collect();
+        let mut col = seg_start;
+        let mut width_acc = 0usize;
+        for i in seg_start..seg_end.min(chars.len()) {
+            let cw = unicode_width::UnicodeWidthChar::width(chars[i]).unwrap_or(0);
+            if width_acc + cw > text_x {
+                break;
+            }
+            width_acc += cw;
+            col = i + 1;
+        }
+        let col = col.min(seg_end).min(max_col);
         Some((row, col))
     }
     pub(crate) fn extend_mouse_selection(&mut self, x: u16, y: u16) {
