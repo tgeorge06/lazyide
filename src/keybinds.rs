@@ -28,6 +28,8 @@ pub(crate) enum KeyAction {
     PrevTab,
     NextTab,
     ToggleWordWrap,
+    TreeExpandAll,
+    TreeCollapseAll,
     // Editor
     GoToDefinition,
     FoldToggle,
@@ -76,6 +78,8 @@ impl KeyAction {
                 | KeyAction::PrevTab
                 | KeyAction::NextTab
                 | KeyAction::ToggleWordWrap
+                | KeyAction::TreeExpandAll
+                | KeyAction::TreeCollapseAll
         )
     }
 
@@ -101,6 +105,8 @@ impl KeyAction {
             KeyAction::PrevTab => "Previous Tab",
             KeyAction::NextTab => "Next Tab",
             KeyAction::ToggleWordWrap => "Toggle Word Wrap",
+            KeyAction::TreeExpandAll => "Expand All Folders",
+            KeyAction::TreeCollapseAll => "Collapse All Folders",
             KeyAction::GoToDefinition => "Go to Definition",
             KeyAction::FoldToggle => "Toggle Fold",
             KeyAction::FoldAllToggle => "Toggle Fold All",
@@ -147,6 +153,8 @@ impl KeyAction {
             KeyAction::PrevTab,
             KeyAction::NextTab,
             KeyAction::ToggleWordWrap,
+            KeyAction::TreeExpandAll,
+            KeyAction::TreeCollapseAll,
             KeyAction::GoToDefinition,
             KeyAction::FoldToggle,
             KeyAction::FoldAllToggle,
@@ -510,6 +518,8 @@ impl KeyBindings {
         bind(KeyAction::NextTab, "f2");
         bind(KeyAction::ToggleWordWrap, "alt+z");
         bind(KeyAction::ToggleWordWrap, "f6");
+        bind(KeyAction::TreeExpandAll, "ctrl+shift+e");
+        bind(KeyAction::TreeCollapseAll, "ctrl+shift+c");
 
         // Editor
         bind(KeyAction::GoToDefinition, "ctrl+d");

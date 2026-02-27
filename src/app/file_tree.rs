@@ -98,26 +98,28 @@ impl App {
         out: &mut Vec<TreeItem>,
     ) -> io::Result<()> {
         let is_root = dir == self.root;
-        let name = if is_root {
-            dir.file_name()
+
+        // For non-root directories, push the directory node itself.
+        // The root is implicit — its children appear at the top level.
+        if !is_root {
+            let name = dir
+                .file_name()
                 .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| dir.display().to_string())
-        } else {
-            dir.file_name()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| dir.display().to_string())
-        };
-        let expanded = self.expanded.contains(dir);
-        out.push(TreeItem {
-            path: dir.to_path_buf(),
-            name,
-            depth,
-            is_dir: true,
-            expanded,
-        });
-        if !expanded {
-            return Ok(());
+                .unwrap_or_else(|| dir.display().to_string());
+            let expanded = self.expanded.contains(dir);
+            out.push(TreeItem {
+                path: dir.to_path_buf(),
+                name,
+                depth,
+                is_dir: true,
+                expanded,
+            });
+            if !expanded {
+                return Ok(());
+            }
         }
+
+        let child_depth = if is_root { depth } else { depth + 1 };
 
         let mut entries: Vec<_> = fs::read_dir(dir)?
             .filter_map(Result::ok)
@@ -146,12 +148,12 @@ impl App {
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| path.display().to_string());
             if is_dir {
-                self.walk_dir(&path, depth + 1, out)?;
+                self.walk_dir(&path, child_depth, out)?;
             } else {
                 out.push(TreeItem {
                     path,
                     name,
-                    depth: depth + 1,
+                    depth: child_depth,
                     is_dir: false,
                     expanded: false,
                 });
@@ -243,6 +245,72 @@ impl App {
                 self.selected = idx;
             }
         }
+    }
+
+    pub(crate) fn tree_expand_recursive(&mut self) -> io::Result<()> {
+        let Some(item) = self.selected_item().cloned() else {
+            return Ok(());
+        };
+        if !item.is_dir {
+            return Ok(());
+        }
+        fn collect_dirs(path: &Path, set: &mut std::collections::HashSet<PathBuf>) {
+            if let Ok(entries) = fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        set.insert(p.clone());
+                        collect_dirs(&p, set);
+                    }
+                }
+            }
+        }
+        self.expanded.insert(item.path.clone());
+        collect_dirs(&item.path, &mut self.expanded);
+        self.rebuild_tree()
+    }
+
+    pub(crate) fn tree_collapse_recursive(&mut self) -> io::Result<()> {
+        let Some(item) = self.selected_item().cloned() else {
+            return Ok(());
+        };
+        // If selection is a file or a collapsed dir, walk up to parent first.
+        let target = if item.is_dir && self.expanded.contains(&item.path) {
+            item.path.clone()
+        } else if let Some(parent) = item.path.parent() {
+            if let Some(idx) = self.tree.iter().position(|i| i.path == parent) {
+                self.selected = idx;
+            }
+            parent.to_path_buf()
+        } else {
+            return Ok(());
+        };
+        // Remove target and all descendants from expanded set.
+        self.expanded.retain(|p| !p.starts_with(&target));
+        self.rebuild_tree()
+    }
+
+    pub(crate) fn tree_expand_all(&mut self) -> io::Result<()> {
+        fn collect_dirs(path: &Path, set: &mut std::collections::HashSet<PathBuf>) {
+            if let Ok(entries) = fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        set.insert(p.clone());
+                        collect_dirs(&p, set);
+                    }
+                }
+            }
+        }
+        self.expanded.insert(self.root.clone());
+        collect_dirs(&self.root, &mut self.expanded);
+        self.rebuild_tree()
+    }
+
+    pub(crate) fn tree_collapse_all(&mut self) -> io::Result<()> {
+        self.expanded.clear();
+        self.selected = 0;
+        self.rebuild_tree()
     }
 
     pub(crate) fn delete_path(&mut self, path: PathBuf) -> io::Result<()> {
