@@ -803,6 +803,51 @@ impl App {
         self.sync_editor_scroll_guess();
     }
 
+    pub(crate) fn select_line_range(&mut self, from: usize, to: usize) {
+        let Some(tab) = self.active_tab() else {
+            return;
+        };
+        let lines = tab.editor.lines();
+        let total = lines.len();
+        if total == 0 {
+            return;
+        }
+        let start = from.min(to).min(total.saturating_sub(1));
+        let end = from.max(to).min(total.saturating_sub(1));
+        // Select from start of first line to start of line after last (or end of last line)
+        if let Some(tab) = self.active_tab_mut() {
+            if end + 1 < total {
+                tab.editor.move_cursor(tui_textarea::CursorMove::Jump(
+                    to_u16_saturating(end + 1),
+                    0,
+                ));
+            } else {
+                let line_len = tab
+                    .editor
+                    .lines()
+                    .get(end)
+                    .map_or(0, |l| l.chars().count());
+                tab.editor.move_cursor(tui_textarea::CursorMove::Jump(
+                    to_u16_saturating(end),
+                    to_u16_saturating(line_len),
+                ));
+            }
+            tab.editor.start_selection();
+            tab.editor.move_cursor(tui_textarea::CursorMove::Jump(
+                to_u16_saturating(start),
+                0,
+            ));
+        }
+        self.sync_editor_scroll_guess();
+    }
+
+    pub(crate) fn gutter_row_from_mouse(&self, y: u16) -> Option<usize> {
+        let tab = self.active_tab()?;
+        let inner_y = y.saturating_sub(self.editor_rect.y.saturating_add(1)) as usize;
+        let visible_idx = tab.editor_scroll_row + inner_y;
+        tab.visible_rows_map.get(visible_idx).copied()
+    }
+
     pub(crate) fn extend_mouse_selection(&mut self, x: u16, y: u16) {
         if let (Some((anchor_row, anchor_col)), Some((row, col))) =
             (self.editor_drag_anchor, self.editor_pos_from_mouse(x, y))

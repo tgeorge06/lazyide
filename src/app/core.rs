@@ -85,6 +85,7 @@ impl App {
             editor_context_menu_rect: Rect::default(),
             editor_dragging: false,
             editor_drag_anchor: None,
+            gutter_drag_anchor: None,
             search_results: SearchResultsState {
                 open: false,
                 query: String::new(),

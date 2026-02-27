@@ -116,6 +116,7 @@ pub(crate) struct App {
     pub(crate) editor_context_menu_rect: Rect,
     pub(crate) editor_dragging: bool,
     pub(crate) editor_drag_anchor: Option<(usize, usize)>,
+    pub(crate) gutter_drag_anchor: Option<usize>,
     pub(crate) search_results: SearchResultsState,
     pub(crate) search_results_rect: Rect,
     pub(crate) file_picker_open: bool,
