@@ -489,6 +489,24 @@ pub(crate) fn render_help(app: &mut App, frame: &mut Frame<'_>) {
             desc_s,
             sep_s,
         ),
+        help_keybind_line(
+            &[
+                ("Shift+Right", "expand recursive"),
+                ("Shift+Left", "collapse recursive"),
+            ],
+            key_s,
+            desc_s,
+            sep_s,
+        ),
+        help_keybind_line(
+            &[
+                (&kb.display_for(KeyAction::TreeExpandAll), "expand all"),
+                (&kb.display_for(KeyAction::TreeCollapseAll), "collapse all"),
+            ],
+            key_s,
+            desc_s,
+            sep_s,
+        ),
         help_keybind_line(&[("Delete", "delete selected item")], key_s, desc_s, sep_s),
         Line::from(""),
         Line::from(Span::styled("Mouse", heading)),
@@ -509,6 +527,10 @@ pub(crate) fn render_help(app: &mut App, frame: &mut Frame<'_>) {
         ]),
         Line::from(Span::styled(
             "Drag divider to resize  |  Right-click: context menus  |  Gutter click: fold",
+            muted,
+        )),
+        Line::from(Span::styled(
+            "[+]/[-] buttons in tree header: expand/collapse all folders",
             muted,
         )),
         Line::from(""),

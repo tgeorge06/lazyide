@@ -105,6 +105,8 @@ pub(crate) struct App {
     pub(crate) themes: Vec<Theme>,
     pub(crate) active_theme_index: usize,
     pub(crate) help_open: bool,
+    pub(crate) tree_expand_btn_rect: Rect,
+    pub(crate) tree_collapse_btn_rect: Rect,
     pub(crate) tree_rect: Rect,
     pub(crate) editor_rect: Rect,
     pub(crate) divider_rect: Rect,

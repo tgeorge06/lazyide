@@ -49,6 +49,20 @@ Core model remains the same:
 - **ripgrep (`rg`)** — Powers project-wide search (Ctrl+Shift+F)
 - **System clipboard** — Via `arboard` crate
 
+## File Tree
+
+- The root directory is implicit — its children appear directly at the top level of the Files pane
+- **[+]/[-] buttons** in the tree header bar (right-aligned) expand/collapse all folders via mouse click
+- **Keyboard shortcuts** (when tree is focused):
+  - `Up/Down/K/J` — navigate
+  - `Right/L/Enter` — expand dir or open file
+  - `Left/H` — collapse dir or jump to parent
+  - `Shift+Right` — recursively expand selected dir and all descendants
+  - `Shift+Left` — recursively collapse selected dir and all descendants
+  - `Ctrl+Shift+E` — expand all folders globally
+  - `Ctrl+Shift+C` — collapse all folders globally
+  - `Delete` — delete selected item
+
 ## Themes
 
 `themes/*.json` — Each file defines background, foreground, accent, selection, border, and UI element colors. Parsed via `ThemeFile` struct with serde. Fallback to built-in dark theme if no files found.

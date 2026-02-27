@@ -68,6 +68,8 @@ impl App {
             themes,
             active_theme_index: 0,
             help_open: false,
+            tree_expand_btn_rect: Rect::default(),
+            tree_collapse_btn_rect: Rect::default(),
             tree_rect: Rect::default(),
             editor_rect: Rect::default(),
             divider_rect: Rect::default(),

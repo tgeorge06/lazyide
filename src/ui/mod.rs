@@ -156,6 +156,26 @@ pub(crate) fn draw(app: &mut App, frame: &mut Frame<'_>) {
                     .style(Style::default().bg(theme.bg_alt).fg(theme.fg)),
             );
         frame.render_stateful_widget(tree, tree_area, &mut app.tree_state);
+        // Render [+][-] buttons right-aligned in the title bar row
+        {
+            let btn_width = 6u16; // "[+][-]"
+            // Place buttons inside the right border: 1 char from right edge
+            let btn_x = tree_area
+                .x
+                .saturating_add(tree_area.width)
+                .saturating_sub(btn_width + 1);
+            let btn_y = tree_area.y;
+            app.tree_expand_btn_rect = Rect::new(btn_x, btn_y, 3, 1);
+            app.tree_collapse_btn_rect = Rect::new(btn_x + 3, btn_y, 3, 1);
+            let btns = Paragraph::new(Line::from(vec![
+                Span::styled("[+]", Style::default().fg(theme.accent)),
+                Span::styled("[-]", Style::default().fg(theme.accent)),
+            ]));
+            frame.render_widget(
+                btns,
+                Rect::new(btn_x, btn_y, btn_width, 1),
+            );
+        }
         if app.files_view_open && app.divider_rect.width > 0 {
             let divider =
                 Paragraph::new("│").style(Style::default().fg(theme.border).bg(theme.bg_alt));

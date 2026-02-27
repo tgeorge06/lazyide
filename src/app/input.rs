@@ -220,6 +220,16 @@ impl App {
         if inside(mouse.column, mouse.row, self.tree_rect) {
             match mouse.kind {
                 MouseEventKind::Down(MouseButton::Left) => {
+                    if inside(mouse.column, mouse.row, self.tree_expand_btn_rect) {
+                        self.tree_expand_all()?;
+                        self.set_status("Expanded all folders");
+                        return Ok(());
+                    }
+                    if inside(mouse.column, mouse.row, self.tree_collapse_btn_rect) {
+                        self.tree_collapse_all()?;
+                        self.set_status("Collapsed all folders");
+                        return Ok(());
+                    }
                     if let Some(idx) = self.tree_index_from_mouse(mouse.row) {
                         self.selected = idx;
                         let path = self.tree[idx].path.clone();

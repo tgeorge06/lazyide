@@ -305,6 +305,12 @@ impl App {
             (KeyModifiers::NONE, KeyCode::Left) | (KeyModifiers::NONE, KeyCode::Char('h')) => {
                 self.tree_collapse_or_parent();
             }
+            (KeyModifiers::SHIFT, KeyCode::Right) => {
+                self.tree_expand_recursive()?;
+            }
+            (KeyModifiers::SHIFT, KeyCode::Left) => {
+                self.tree_collapse_recursive()?;
+            }
             _ => {}
         }
         Ok(())
@@ -497,6 +503,14 @@ impl App {
                 }
             }
             KeyAction::ToggleWordWrap => self.toggle_word_wrap(),
+            KeyAction::TreeExpandAll => {
+                self.tree_expand_all()?;
+                self.set_status("Expanded all folders");
+            }
+            KeyAction::TreeCollapseAll => {
+                self.tree_collapse_all()?;
+                self.set_status("Collapsed all folders");
+            }
             // Editor
             KeyAction::GoToDefinition => {
                 if self.focus == Focus::Editor {
