@@ -287,13 +287,16 @@ impl App {
                         .column
                         .saturating_sub(self.editor_rect.x.saturating_add(1));
                     if inner_x < Self::EDITOR_GUTTER_WIDTH {
-                        let inner_y = mouse
-                            .row
-                            .saturating_sub(self.editor_rect.y.saturating_add(1))
-                            as usize;
-                        if let Some(tab) = self.active_tab() {
-                            let visible_idx = tab.editor_scroll_row + inner_y;
-                            if let Some(&row) = tab.visible_rows_map.get(visible_idx) {
+                        if inner_x < 6 {
+                            // Line number area → select full line
+                            if let Some(row) = self.gutter_row_from_mouse(mouse.row) {
+                                self.select_line(row);
+                                self.gutter_drag_anchor = Some(row);
+                                self.editor_dragging = true;
+                            }
+                        } else {
+                            // Fold/marker area → toggle fold
+                            if let Some(row) = self.gutter_row_from_mouse(mouse.row) {
                                 self.toggle_fold_at_row(row);
                             }
                         }
@@ -312,11 +315,23 @@ impl App {
                     }
                 }
                 MouseEventKind::Drag(MouseButton::Left) => {
-                    self.extend_mouse_selection(mouse.column, mouse.row);
+                    if let Some(anchor) = self.gutter_drag_anchor {
+                        if let Some(target) = self.gutter_row_from_mouse(mouse.row) {
+                            self.select_line_range(anchor, target);
+                        }
+                    } else {
+                        self.extend_mouse_selection(mouse.column, mouse.row);
+                    }
                 }
                 MouseEventKind::Moved => {
                     if self.editor_dragging {
-                        self.extend_mouse_selection(mouse.column, mouse.row);
+                        if let Some(anchor) = self.gutter_drag_anchor {
+                            if let Some(target) = self.gutter_row_from_mouse(mouse.row) {
+                                self.select_line_range(anchor, target);
+                            }
+                        } else {
+                            self.extend_mouse_selection(mouse.column, mouse.row);
+                        }
                     } else {
                         return Ok(());
                     }
@@ -324,6 +339,7 @@ impl App {
                 MouseEventKind::Up(MouseButton::Left) => {
                     self.editor_dragging = false;
                     self.editor_drag_anchor = None;
+                    self.gutter_drag_anchor = None;
                     return Ok(());
                 }
                 MouseEventKind::Down(MouseButton::Right) => {
