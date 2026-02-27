@@ -2,16 +2,16 @@
   "name": "Chrome Ember",
   "type": "dark",
   "source": "Custom - spinoff of Obsidian Ember with inverted emphasis",
-  "description": "Deep obsidian canvas with burnished amber accents — the dark room with a fireplace effect",
+  "description": "Deep obsidian canvas with burnished amber accents \u2014 the dark room with a fireplace effect",
   "colors": {
     "background": "#16161a",
-    "backgroundAlt": "#1f1f24",
+    "backgroundAlt": "#101013",
     "backgroundElevated": "#28282e",
     "foreground": "#d1d1d6",
     "foregroundMuted": "#636370",
     "selection": "#f59e0b20",
     "selectionInactive": "#f59e0b15",
-    "border": "#383842",
+    "border": "#0b0b0d",
     "accent": "#f59e0b",
     "accentSecondary": "#0a0a0c",
     "cursor": "#f59e0b",
@@ -56,7 +56,7 @@
     "regexp": "#e8a0ac"
   },
   "terminal": {
-    "black": "#0a0a0c",
+    "black": "#101013",
     "red": "#e06c6c",
     "green": "#a7c080",
     "yellow": "#e2b86b",
@@ -74,13 +74,13 @@
     "brightWhite": "#eaeaee"
   },
   "ui": {
-    "panel": "#1f1f24",
-    "panelBorder": "#383842",
-    "sidebar": "#141418",
-    "sidebarBorder": "#303038",
-    "header": "#16161a",
+    "panel": "#101013",
+    "panelBorder": "#0b0b0d",
+    "sidebar": "#0a0a0c",
+    "sidebarBorder": "#0b0b0d",
+    "header": "#101013",
     "headerBorder": "#383842",
-    "input": "#141418",
+    "input": "#0e0e10",
     "inputBorder": "#4a4a56",
     "inputFocus": "#f59e0b",
     "button": "#303038",
@@ -100,13 +100,13 @@
     "listHover": "#28282e",
     "listActive": "#f59e0b20",
     "listFocusOutline": "#f59e0b",
-    "tabActive": "#28282e",
-    "tabInactive": "#16161a",
-    "tabBorder": "#383842",
+    "tabActive": "#16161a",
+    "tabInactive": "#101013",
+    "tabBorder": "#0b0b0d",
     "divider": "#303038",
     "activityBar": "#141418",
     "activityBarBadge": "#f59e0b",
-    "statusBar": "#0a0a0c",
-    "statusBarText": "#8a8a96"
+    "statusBar": "#101013",
+    "statusBarText": "#636370"
   }
 }

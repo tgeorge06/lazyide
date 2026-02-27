@@ -11,7 +11,7 @@
     "foregroundMuted": "#6a6560",
     "selection": "#e8b82024",
     "selectionInactive": "#e8b82012",
-    "border": "#dbd4c7",
+    "border": "#e1d2b4",
     "accent": "#c89810",
     "accentSecondary": "#b82838",
     "cursor": "#c89810",
@@ -74,13 +74,13 @@
     "brightWhite": "#faf7f0"
   },
   "ui": {
-    "panel": "#ebe5d8",
-    "panelBorder": "#dbd4c7",
-    "sidebar": "#e5dfd0",
-    "sidebarBorder": "#d3ccbf",
-    "header": "#e5dfd0",
+    "panel": "#e9e3d5",
+    "panelBorder": "#e1d2b4",
+    "sidebar": "#e9e3d5",
+    "sidebarBorder": "#e1d2b4",
+    "header": "#e9e3d5",
     "headerBorder": "#dbd4c7",
-    "input": "#faf7f0",
+    "input": "#f5f0e6",
     "inputBorder": "#d8d0c0",
     "inputFocus": "#c89810",
     "button": "#e5dfd0",
@@ -98,9 +98,11 @@
     "dropdown": "#ebe5d8",
     "dropdownBorder": "#d8d0c0",
     "listHover": "#e0d8c8",
-    "listActive": "#c8981020",
+    "listActive": "#e8b82024",
     "tabActive": "#f5f0e6",
-    "tabInactive": "#e5dfd0",
-    "tabBorder": "#dbd4c7"
+    "tabInactive": "#e9e3d5",
+    "tabBorder": "#e1d2b4",
+    "statusBar": "#e9e3d5",
+    "statusBarText": "#6a6560"
   }
 }

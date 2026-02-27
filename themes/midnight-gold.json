@@ -5,13 +5,13 @@
   "description": "Elegant luxury theme with muted gold and warm beige accents",
   "colors": {
     "background": "#171717",
-    "backgroundAlt": "#212121",
+    "backgroundAlt": "#111111",
     "backgroundElevated": "#2b2b2b",
     "foreground": "#e0dbd0",
     "foregroundMuted": "#707070",
     "selection": "#3d3530",
     "selectionInactive": "#3d35305a",
-    "border": "#303030",
+    "border": "#0c0c0c",
     "accent": "#bfa181",
     "accentSecondary": "#d4af37",
     "cursor": "#d4af37",
@@ -52,7 +52,7 @@
     "regexp": "#c48573"
   },
   "terminal": {
-    "black": "#1c1c1c",
+    "black": "#111111",
     "red": "#c9826e",
     "green": "#8fa876",
     "yellow": "#d4af37",
@@ -70,13 +70,13 @@
     "brightWhite": "#eee9dd"
   },
   "ui": {
-    "panel": "#212121",
-    "panelBorder": "#323232",
-    "sidebar": "#171717",
-    "sidebarBorder": "#262626",
-    "header": "#1c1c1c",
+    "panel": "#111111",
+    "panelBorder": "#0c0c0c",
+    "sidebar": "#0b0b0b",
+    "sidebarBorder": "#0c0c0c",
+    "header": "#111111",
     "headerBorder": "#323232",
-    "input": "#252525",
+    "input": "#0e0e0e",
     "inputBorder": "#3a3a3a",
     "inputFocus": "#bfa181",
     "button": "#3a3a3a",
@@ -93,8 +93,10 @@
     "dropdownBorder": "#3a3a3a",
     "listHover": "#2a2a2a",
     "listActive": "#3d3530",
-    "tabActive": "#252525",
-    "tabInactive": "#1c1c1c",
-    "tabBorder": "#323232"
+    "tabActive": "#171717",
+    "tabInactive": "#111111",
+    "tabBorder": "#0c0c0c",
+    "statusBar": "#111111",
+    "statusBarText": "#707070"
   }
 }

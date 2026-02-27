@@ -5,13 +5,13 @@
   "description": "GitHub's softer dark theme with muted contrast (Dark Dimmed)",
   "colors": {
     "background": "#1e2228",
-    "backgroundAlt": "#2a2f37",
+    "backgroundAlt": "#191c21",
     "backgroundElevated": "#353b44",
     "foreground": "#adbac7",
     "foregroundMuted": "#6d7984",
     "selection": "#539bf52d",
     "selectionInactive": "#539bf516",
-    "border": "#3c424a",
+    "border": "#14171b",
     "accent": "#539bf5",
     "accentSecondary": "#316dca",
     "cursor": "#539bf5",
@@ -56,7 +56,7 @@
     "regexp": "#7fcf7e"
   },
   "terminal": {
-    "black": "#545d68",
+    "black": "#191c21",
     "red": "#f47067",
     "green": "#57ab5a",
     "yellow": "#c69026",
@@ -74,13 +74,13 @@
     "brightWhite": "#c1cfdd"
   },
   "ui": {
-    "panel": "#2a2f37",
-    "panelBorder": "#3e454d",
-    "sidebar": "#1e2228",
-    "sidebarBorder": "#31373e",
-    "header": "#22272e",
+    "panel": "#191c21",
+    "panelBorder": "#14171b",
+    "sidebar": "#13161a",
+    "sidebarBorder": "#14171b",
+    "header": "#191c21",
     "headerBorder": "#3e454d",
-    "input": "#22272e",
+    "input": "#171a1e",
     "inputBorder": "#444c56",
     "inputFocus": "#539bf5",
     "button": "#373e47",
@@ -98,9 +98,11 @@
     "dropdown": "#2d333b",
     "dropdownBorder": "#444c56",
     "listHover": "#2a2f37",
-    "listActive": "#388bfd30",
-    "tabActive": "#22272e",
-    "tabInactive": "#1c2128",
-    "tabBorder": "#3e454d"
+    "listActive": "#539bf52d",
+    "tabActive": "#1e2228",
+    "tabInactive": "#191c21",
+    "tabBorder": "#14171b",
+    "statusBar": "#191c21",
+    "statusBarText": "#6d7984"
   }
 }

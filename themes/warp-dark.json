@@ -5,12 +5,12 @@
   "description": "A modern dark theme inspired by Warp terminal",
   "colors": {
     "background": "#090c10",
-    "backgroundAlt": "#13171d",
+    "backgroundAlt": "#040608",
     "backgroundElevated": "#1f242a",
     "foreground": "#bdc7d1",
     "foregroundMuted": "#818a94",
     "selection": "#264F78",
-    "border": "#282c31",
+    "border": "#040507",
     "accent": "#F78166",
     "accentSecondary": "#58A6FF",
     "cursor": "#C9D1D9",
@@ -48,7 +48,7 @@
     "regexp": "#70dc79"
   },
   "terminal": {
-    "black": "#0D1117",
+    "black": "#040608",
     "red": "#FF7B72",
     "green": "#3FB950",
     "yellow": "#D29922",
@@ -66,15 +66,15 @@
     "brightWhite": "#e0ecf8"
   },
   "ui": {
-    "panel": "#13171d",
-    "panelBorder": "#2a2e34",
-    "sidebar": "#090c10",
-    "sidebarBorder": "#1b1f24",
-    "header": "#161B22",
+    "panel": "#040608",
+    "panelBorder": "#040507",
+    "sidebar": "#040507",
+    "sidebarBorder": "#040507",
+    "header": "#040608",
     "headerBorder": "#2a2e34",
-    "input": "#0D1117",
+    "input": "#030507",
     "inputBorder": "#30363D",
-    "inputFocus": "#58A6FF",
+    "inputFocus": "#F78166",
     "button": "#21262D",
     "buttonHover": "#30363D",
     "buttonPrimary": "#238636",
@@ -91,9 +91,11 @@
     "dropdownBorder": "#30363D",
     "listHover": "#1e2229",
     "listActive": "#264F78",
-    "tabActive": "#0D1117",
-    "tabInactive": "#161B22",
-    "tabBorder": "#2a2e34",
-    "divider": "#1b1f24"
+    "tabActive": "#090c10",
+    "tabInactive": "#040608",
+    "tabBorder": "#040507",
+    "divider": "#1b1f24",
+    "statusBar": "#040608",
+    "statusBarText": "#818a94"
   }
 }

@@ -5,13 +5,13 @@
   "description": "Slate grey metallic surfaces with amber circuit glow accents",
   "colors": {
     "background": "#1a1d22",
-    "backgroundAlt": "#232830",
+    "backgroundAlt": "#14171b",
     "backgroundElevated": "#2c3139",
     "foreground": "#ccd1dc",
     "foregroundMuted": "#768696",
     "selection": "#e8702022",
     "selectionInactive": "#e8702011",
-    "border": "#323840",
+    "border": "#101215",
     "accent": "#e87020",
     "accentSecondary": "#50b0e0",
     "cursor": "#e87020",
@@ -56,7 +56,7 @@
     "regexp": "#d26ea7"
   },
   "terminal": {
-    "black": "#1e2228",
+    "black": "#14171b",
     "red": "#e85848",
     "green": "#50b068",
     "yellow": "#d8a838",
@@ -74,13 +74,13 @@
     "brightWhite": "#dbe1ed"
   },
   "ui": {
-    "panel": "#232830",
-    "panelBorder": "#343b43",
-    "sidebar": "#1a1d22",
-    "sidebarBorder": "#282d33",
-    "header": "#1e2228",
+    "panel": "#14171b",
+    "panelBorder": "#101215",
+    "sidebar": "#0f1113",
+    "sidebarBorder": "#101215",
+    "header": "#14171b",
     "headerBorder": "#343b43",
-    "input": "#1e2228",
+    "input": "#121518",
     "inputBorder": "#3a424c",
     "inputFocus": "#e87020",
     "button": "#2e343c",
@@ -98,9 +98,11 @@
     "dropdown": "#262c34",
     "dropdownBorder": "#3a424c",
     "listHover": "#2b3038",
-    "listActive": "#e8702025",
-    "tabActive": "#262c34",
-    "tabInactive": "#1e2228",
-    "tabBorder": "#343b43"
+    "listActive": "#e8702022",
+    "tabActive": "#1a1d22",
+    "tabInactive": "#14171b",
+    "tabBorder": "#101215",
+    "statusBar": "#14171b",
+    "statusBarText": "#768696"
   }
 }

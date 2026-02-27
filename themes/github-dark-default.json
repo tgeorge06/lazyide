@@ -5,13 +5,13 @@
   "description": "GitHub's default dark theme with high contrast and vibrant blues",
   "colors": {
     "background": "#090c10",
-    "backgroundAlt": "#13171d",
+    "backgroundAlt": "#040608",
     "backgroundElevated": "#1a1f25",
     "foreground": "#d1dee9",
     "foregroundMuted": "#818a94",
     "selection": "#388bfd2d",
     "selectionInactive": "#388bfd16",
-    "border": "#282c31",
+    "border": "#040507",
     "accent": "#58a6ff",
     "accentSecondary": "#1f6feb",
     "cursor": "#58a6ff",
@@ -56,7 +56,7 @@
     "regexp": "#70dc79"
   },
   "terminal": {
-    "black": "#484f58",
+    "black": "#040608",
     "red": "#ff7b72",
     "green": "#3fb950",
     "yellow": "#d29922",
@@ -74,13 +74,13 @@
     "brightWhite": "#e0ecf8"
   },
   "ui": {
-    "panel": "#13171d",
-    "panelBorder": "#2a2e34",
-    "sidebar": "#090c10",
-    "sidebarBorder": "#1b1f24",
-    "header": "#0d1117",
+    "panel": "#040608",
+    "panelBorder": "#040507",
+    "sidebar": "#040507",
+    "sidebarBorder": "#040507",
+    "header": "#040608",
     "headerBorder": "#2a2e34",
-    "input": "#0d1117",
+    "input": "#030507",
     "inputBorder": "#30363d",
     "inputFocus": "#58a6ff",
     "button": "#21262d",
@@ -98,9 +98,11 @@
     "dropdown": "#161b22",
     "dropdownBorder": "#30363d",
     "listHover": "#13171d",
-    "listActive": "#388bfd30",
-    "tabActive": "#0d1117",
-    "tabInactive": "#010409",
-    "tabBorder": "#2a2e34"
+    "listActive": "#388bfd2d",
+    "tabActive": "#090c10",
+    "tabInactive": "#040608",
+    "tabBorder": "#040507",
+    "statusBar": "#040608",
+    "statusBarText": "#818a94"
   }
 }

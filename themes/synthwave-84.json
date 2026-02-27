@@ -11,7 +11,7 @@
     "foregroundMuted": "#7a81b3",
     "selection": "#ffffff16",
     "selectionInactive": "#ffffff0b",
-    "border": "#464f84",
+    "border": "#181622",
     "accent": "#ff7edb",
     "accentSecondary": "#36f9f6",
     "cursor": "#f97e72",
@@ -53,7 +53,7 @@
     "regexp": "#ee6f63"
   },
   "terminal": {
-    "black": "#171520",
+    "black": "#20182a",
     "red": "#fe4450",
     "green": "#72f1b8",
     "yellow": "#f3e70f",
@@ -66,18 +66,18 @@
     "brightGreen": "#8efafa",
     "brightYellow": "#f7d650",
     "brightBlue": "#2bf0ed",
-    "brightMagenta": "#fa83d7",
+    "brightMagenta": "#ffb1e9",
     "brightCyan": "#94fbfb",
     "brightWhite": "#f5f5f5"
   },
   "ui": {
     "panel": "#20182a",
-    "panelBorder": "#485187",
-    "sidebar": "#1f1729",
-    "sidebarBorder": "#2e2543",
-    "header": "#171520",
+    "panelBorder": "#181622",
+    "sidebar": "#171520",
+    "sidebarBorder": "#181622",
+    "header": "#20182a",
     "headerBorder": "#485187",
-    "input": "#34294f",
+    "input": "#1e1627",
     "inputBorder": "#495495",
     "inputFocus": "#ff7edb",
     "button": "#34294f",
@@ -93,9 +93,11 @@
     "dropdown": "#241b2f",
     "dropdownBorder": "#495495",
     "listHover": "#31264a",
-    "listActive": "#495495",
-    "tabActive": "#262335",
-    "tabInactive": "#241b2f",
-    "tabBorder": "#485187"
+    "listActive": "#ffffff16",
+    "tabActive": "#221f2f",
+    "tabInactive": "#20182a",
+    "tabBorder": "#181622",
+    "statusBar": "#20182a",
+    "statusBarText": "#7a81b3"
   }
 }
