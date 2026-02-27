@@ -30,6 +30,11 @@ use lsp_client::resolve_rust_analyzer_bin;
 use ui::draw;
 
 pub fn run() -> io::Result<()> {
+    if std::env::args().any(|a| a == "--version" || a == "-V") {
+        println!("lazyide {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     if std::env::args().any(|a| a == "--setup") {
         return run_setup();
     }
