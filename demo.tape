@@ -1,158 +1,109 @@
-# lazyide demo
+# lazyide — 10s loop demo
 Output demo.gif
+Output demo.mp4
 
 Set Shell "bash"
-Set FontSize 14
-Set Width 1200
-Set Height 700
-Set Theme "Catppuccin Mocha"
-Set WindowBar Colorful
-Set WindowBarSize 40
-Set BorderRadius 8
-Set Padding 10
-Set PlaybackSpeed 1
+Set FontSize 15
+Set Width 1400
+Set Height 900
+Set Padding 0
 Set Framerate 30
+Set TypingSpeed 30ms
+Set PlaybackSpeed 1
 
-# Launch
+# --- Hidden setup ---
 Hide
 Type "rm -f ~/.config/lazyide/autosave/*.autosave"
 Enter
-Sleep 300ms
+Sleep 200ms
 Type "export TERM=xterm-256color"
 Enter
-Sleep 300ms
-Type "export PATH=/Users/tgeorge/.rustup/toolchains/stable-aarch64-apple-darwin/bin:$PATH"
+Sleep 200ms
+Type@1ms "export PATH=/Users/tgeorge/.rustup/toolchains/stable-aarch64-apple-darwin/bin:$PATH"
 Enter
-Sleep 300ms
-Type "cd /Users/tgeorge/test-project"
-Enter
-Sleep 300ms
+Sleep 200ms
 Type "clear"
 Enter
-Sleep 300ms
-Type "/Users/tgeorge/src/github.com/tgeorge06/lazyide/target/debug/lazyide ."
+Sleep 200ms
+Type@1ms "./target/release/lazyide ~/demo-project"
 Enter
-Show
-Sleep 2.5s
-
-# Open utils.rs — shows git gutter (+) for added lines and git file status in tree
-# Navigate: . > .git > docs > src > utils.rs
-Down
-Sleep 300ms
-Down
-Sleep 300ms
-Down
-Sleep 300ms
+Sleep 2s
+# Navigate to src/handlers/auth.rs
+Down 2
+Sleep 50ms
 Right
-Sleep 400ms
+Sleep 100ms
 Down
-Sleep 300ms
+Sleep 50ms
+Right
+Sleep 100ms
 Down
-Sleep 300ms
-Down
-Sleep 300ms
-Down
-Sleep 300ms
-
-# Open utils.rs (modified file — yellow in tree, green + gutter markers)
+Sleep 50ms
 Enter
-Sleep 2s
-
-# Scroll down slowly to show git gutter + markers and indent guides
-Down
-Sleep 200ms
-Down
-Sleep 200ms
-Down
-Sleep 200ms
-Down
-Sleep 200ms
-Down
-Sleep 200ms
-Down
-Sleep 200ms
-Down
-Sleep 200ms
-Down
-Sleep 200ms
-Down
-Sleep 200ms
-Down
-Sleep 200ms
-Down
-Sleep 200ms
-Down
-Sleep 200ms
 Sleep 1s
+Show
 
-# Go back to top to see full picture
-Up 12
-Sleep 1.5s
+# ═══════════════════════════════════════════════
+# Start: file tree + auth.rs in One Dark Pro
+# ═══════════════════════════════════════════════
+Sleep 400ms
 
-# Open brackets.rs — shows indent guides + bracket colorization
-Tab
+# Scroll through code — syntax + brackets
+Down 6
+Sleep 50ms
+Down 6
+Sleep 50ms
+Down 6
+Sleep 50ms
+Down 6
+Sleep 50ms
+Down 6
+Sleep 50ms
+Down 6
+Sleep 50ms
 Sleep 300ms
-Up
-Sleep 300ms
 
-# Open brackets.rs
+# Hide tree for full editor
+Ctrl+b
+Sleep 400ms
+
+# Fold all / unfold
+Ctrl+u
+Sleep 600ms
+Ctrl+u
+Sleep 600ms
+
+# Project search
+Ctrl+Shift+f
+Sleep 300ms
+Type "login"
+Sleep 200ms
 Enter
-Sleep 2s
+Sleep 500ms
+Enter
+Sleep 400ms
 
-# Scroll through to show indent guides at various depths
-Down 5
-Sleep 300ms
-Ctrl+j
-Sleep 1.5s
-
-# Unfold
-Ctrl+j
-Sleep 1.5s
-
-# Scroll to deeply nested section for indent guides
-Down 16
-Sleep 300ms
-Ctrl+j
-Sleep 1.5s
-
-# Unfold
-Ctrl+j
-Sleep 1.5s
-
-# Switch to Dark Mech theme via command palette
+# Theme switch: One Dark Pro → Warp Dark (6 down)
 Ctrl+p
-Sleep 600ms
-Type "theme"
-Sleep 400ms
-Enter
-Sleep 600ms
-Down
-Sleep 200ms
-Down
-Sleep 200ms
-Down
-Sleep 200ms
-Down
-Sleep 200ms
-Enter
-Sleep 1.5s
-
-# Open main.rs via quick open (show tabs)
-Ctrl+o
-Sleep 600ms
-Type "main"
-Sleep 400ms
-Enter
-Sleep 1.5s
-
-# Toggle file tree off/on
-Ctrl+b
-Sleep 1s
-Ctrl+b
-Sleep 1s
-
-# Quit
-Ctrl+q
-Sleep 200ms
-Ctrl+q
 Sleep 300ms
+Type "theme"
+Sleep 150ms
+Enter
+Sleep 300ms
+Down
+Sleep 300ms
+Down
+Sleep 300ms
+Down
+Sleep 300ms
+Down
+Sleep 300ms
+Down
+Sleep 300ms
+Down
+Sleep 300ms
+Enter
+Sleep 600ms
+
+# Hold final frame on Warp Dark
+Sleep 500ms
