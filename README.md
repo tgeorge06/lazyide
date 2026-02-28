@@ -1,28 +1,22 @@
 # lazyide
 
-Inspired by [lazygit](https://github.com/jesseduffield/lazygit) and [lazyssh](https://github.com/Adembc/lazyssh) — a lightweight terminal-native IDE built with Rust and [ratatui](https://ratatui.rs). Provides file tree navigation, tabbed editing, LSP integration (rust-analyzer), syntax highlighting, code folding, git gutter & file status, indent guides, project search (ripgrep), customizable keybindings, and a theme system.
+[![Version](https://img.shields.io/github/v/release/TysonLabs/lazyide?color=blue&label=version)](https://github.com/TysonLabs/lazyide/releases)
+[![License](https://img.shields.io/github/license/TysonLabs/lazyide)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/TysonLabs/lazyide/release.yml?label=build)](https://github.com/TysonLabs/lazyide/actions)
+![Platforms](https://img.shields.io/badge/platforms-linux%20%7C%20macos%20%7C%20windows-brightgreen)
+
+A lightweight terminal IDE built with Rust and [ratatui](https://ratatui.rs). File tree, tabbed editing, LSP, syntax highlighting, code folding, git integration, project search, 32 themes, and customizable keybindings — all in a single binary.
+
+A full IDE experience anywhere you have a terminal. SSH into a server, run `lazyide`, and pair with your agentic coding tool.
 
 ![demo](demo.gif)
 
-## Features
+<details>
+<summary>Static screenshot</summary>
 
-- **LSP** (rust-analyzer): diagnostics in gutter + status bar, completion with ghost suggestions, go-to-definition
-- **Syntax highlighting**: Rust, Python, JS/TS, Go, PHP, CSS/SCSS/SASS, HTML/XML, Shell, JSON/TOML/YAML, Markdown
-- **Code folding**: brace-based (Rust, JS, Go), indentation-based (Python), tag-based (HTML/XML)
-- **Bracket pair colorization**: `{}`, `()`, `[]` colored by nesting depth (3-color cycle per theme)
-- **27 themes**: embedded in binary, with live preview browser (command palette > Theme)
-- **Customizable keybindings**: remap ~40 actions via `~/.config/lazyide/keybinds.json` or the in-app keybind editor (command palette > "Keybind Editor")
-- **Project search**: ripgrep-powered search across all files (`Ctrl+Shift+F`)
-- **Tabbed editing**: preview tabs (single-click), sticky tabs (double-click/edit), dirty indicators
-- **File tree**: folders-first sorting, expand/collapse, right-click context menu, draggable divider
-- **Git gutter**: added (`+`), modified (`~`), and deleted (`-`) line markers in the editor gutter via `git diff`
-- **Git file status**: file tree colors files by git status (modified=yellow, added=green, untracked=muted) with parent directory propagation
-- **Indent guides**: vertical guide lines at 4-space tab stops in indented code, with blank-line continuity
-- **Git branch & change summary**: branch name + change counts (`Δ: ~M +A ?U`) shown in the top bar
-- **Word wrap**: wrapped-line cursor/selection/mouse support, toggle with `Alt+Z` (or `F6`)
-- **Horizontal scrolling**: when word wrap is off, Shift+scroll pans long lines; cursor movement auto-scrolls to keep cursor visible
-- **Autosave & recovery**: dirty buffers saved every 2s, crash recovery on reopen
-- **POSIX trailing newline**: files always saved with a final newline
+![screenshot](demo.png)
+
+</details>
 
 ## Install
 
@@ -39,137 +33,134 @@ irm https://tysonlabs.dev/lazyide/install.ps1 | iex
 <details>
 <summary>More install options</summary>
 
-**macOS (Homebrew):**
+**Homebrew (macOS):**
 ```bash
-brew tap TysonLabs/tap
-brew install lazyide
+brew tap TysonLabs/tap && brew install lazyide
 ```
 
-**Windows (Scoop):**
+**Scoop (Windows):**
 ```powershell
 scoop bucket add lazyide https://github.com/TysonLabs/scoop-bucket
 scoop install lazyide
 ```
 
-**Shell script options:**
+**From source:**
 ```bash
-curl -fsSL https://tysonlabs.dev/lazyide/install.sh -o install.sh
+cargo install --git https://github.com/TysonLabs/lazyide
+```
+
+**Prebuilt binaries:** [GitHub Releases](https://github.com/TysonLabs/lazyide/releases)
+
+**Installer flags:**
+```bash
 sh install.sh --with-deps          # also install ripgrep + rust-analyzer
 sh install.sh --prefix /usr/local/bin
-sh install.sh --version v0.3.0     # specific version
+sh install.sh --version v0.3.0
 ```
 
 </details>
 
-**From source (all platforms):**
-```bash
-cargo install --git https://github.com/TysonLabs/lazyide
-```
-This compiles all dependencies from scratch and may take a few minutes on the first install.
+After installing, run `lazyide --setup` to detect and install optional tools (rust-analyzer, ripgrep).
 
-**Prebuilt binaries:** Download from [Releases](https://github.com/TysonLabs/lazyide/releases) for Linux, macOS, and Windows.
+## Features
 
-## Build & Run
+### Editor
+- **LSP integration** — rust-analyzer completions with inline ghost text, diagnostics, go-to-definition
+- **Syntax highlighting** — Rust, Python, JS/TS, Go, PHP, CSS/SCSS, HTML/XML, Shell, JSON/TOML/YAML, Markdown
+- **Code folding** — brace-based (Rust, JS, Go), indentation-based (Python), tag-based (HTML/XML)
+- **Bracket pair colorization** — `{}` `()` `[]` colored by nesting depth
+- **Find & replace** — regex search in file, ripgrep-powered project search
+- **Word wrap** — toggle with `Alt+Z`, with full cursor/selection/mouse support
+- **Horizontal scrolling** — `Shift+scroll` when word wrap is off
 
-```bash
-cargo build --release
-cargo run              # run in current directory
-cargo run -- /path/to/project  # open a specific project
-cargo test             # run tests
-```
+### Git
+- **Gutter markers** — added `+`, modified `~`, deleted `-` per line via `git diff`
+- **File status** — tree colors files by status (modified, added, untracked) with directory propagation
+- **Branch display** — branch name and change summary in the top bar
 
-After building, the binary is at `target/release/lazyide`. Copy it somewhere in your `$PATH` to run it from anywhere:
-
-```bash
-cp target/release/lazyide /usr/local/bin/
-```
-
-**Requirements:** Rust (2024 edition)
-
-## Setup
-
-After installing, run the setup command to check for optional tools:
-
-```bash
-lazyide --setup
-```
-
-This detects missing tools (rust-analyzer, ripgrep) and offers to install them automatically.
-
-**Optional external tools** (not installed by cargo, must be installed separately):
-- [`rust-analyzer`](https://rust-analyzer.github.io/manual.html#installation) — enables LSP completions, diagnostics, and go-to-definition for Rust files
-- [`rg` (ripgrep)](https://github.com/BurntSushi/ripgrep#installation) — enables project-wide search (`Ctrl+Shift+F`)
-- `git` — shows current branch name in the top bar
+### Interface
+- **32 themes** — dark and light, with live preview browser
+- **Customizable keybindings** — remap ~40 actions via config file or in-app editor
+- **Tabbed editing** — preview tabs, sticky tabs, dirty indicators
+- **File tree** — folders-first sorting, expand/collapse, context menus, resizable divider
+- **Command palette** — `Ctrl+P` for quick access to all actions
+- **Autosave & recovery** — buffers saved every 2s, crash recovery on reopen
 
 ## Keyboard
 
-### Global
+<details>
+<summary>Global</summary>
 
-- `F1` / `F2` previous / next tab
-- `F4` help
-- `Ctrl+S` save
-- `Ctrl+W` close active tab (with dirty check)
-- `Ctrl+Q` quit (two-step if unsaved)
-- `Ctrl+B` toggle files pane
-- `Ctrl+R` refresh tree
-- `Alt+Z` / `F6` toggle word wrap
-- `Ctrl+N` new file
-- `Ctrl+O` quick open file (fuzzy search)
-- `Ctrl+P` command palette (also `Ctrl+Shift+P`)
-- `Ctrl+F` find in current file (regex)
-- `Ctrl+H` find and replace
-- `Ctrl+Shift+F` search in project (ripgrep)
-- `Tab` focus tree / `Shift+Tab` focus editor
+| Key | Action |
+|-----|--------|
+| `Ctrl+P` | Command palette |
+| `Ctrl+O` | Quick open (fuzzy search) |
+| `Ctrl+S` | Save |
+| `Ctrl+W` | Close tab |
+| `Ctrl+Q` | Quit (press twice if unsaved) |
+| `Ctrl+B` | Toggle file tree |
+| `Ctrl+F` | Find in file |
+| `Ctrl+H` | Find and replace |
+| `Ctrl+Shift+F` | Search project (ripgrep) |
+| `Ctrl+N` | New file |
+| `Ctrl+R` | Refresh tree |
+| `Alt+Z` | Toggle word wrap |
+| `F1` / `F2` | Previous / next tab |
+| `F4` | Help |
+| `Tab` / `Shift+Tab` | Focus tree / editor |
 
-### Editor
+</details>
 
-- `Ctrl+Space` or `Ctrl+.` LSP completion (ghost suggestion + Tab accept)
-- `Ctrl+D` go to definition (Rust LSP)
-- `Ctrl+G` go to line
-- `Ctrl+J` toggle fold at cursor
-- `Ctrl+U` toggle fold all / unfold all
-- `Ctrl+Shift+[` / `]` fold / unfold current block
-- `Ctrl+Alt+[` / `]` fold all / unfold all
-- `F3` / `Shift+F3` find next / previous
-- `PageUp` / `PageDown` scroll by page
-- `Ctrl+Home` / `Ctrl+End` go to start / end of file
-- `Shift+Alt+Down` / `Up` duplicate line
-- `Ctrl+Z` undo / `Ctrl+Y` redo
-- `Ctrl+A` select all
-- `Ctrl+C` copy / `Ctrl+X` cut / `Ctrl+V` paste
-- `Ctrl+/` toggle line comment (language-aware)
-- `Shift+Arrow` select text
-- `Ctrl+Shift+Arrow` select word-by-word
-- `Shift+Tab` dedent selected lines
+<details>
+<summary>Editor</summary>
 
-### Tabs
+| Key | Action |
+|-----|--------|
+| `Ctrl+Space` | LSP completion |
+| `Ctrl+D` | Go to definition |
+| `Ctrl+G` | Go to line |
+| `Ctrl+J` | Toggle fold |
+| `Ctrl+U` | Toggle fold all |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
+| `Ctrl+/` | Toggle comment |
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy / cut / paste |
+| `Ctrl+A` | Select all |
+| `Shift+Alt+Down` / `Up` | Duplicate line |
+| `F3` / `Shift+F3` | Find next / previous |
+| `PageUp` / `PageDown` | Scroll page |
+| `Ctrl+Home` / `Ctrl+End` | Start / end of file |
 
-- **Single-click** file in tree: open as preview tab (italic, replaced by next click)
-- **Double-click** or **Enter** in tree: open as sticky tab (permanent)
-- **Editing** a preview tab auto-promotes it to sticky
-- Click tab name to switch, click `[x]` to close
-- Dirty tabs show `*` prefix
+</details>
 
-### Tree
+<details>
+<summary>Tree</summary>
 
-- `Up/Down` or `K/J` move
-- `Left` or `H` collapse / go parent
-- `Right`, `L`, or `Enter` open/toggle
-- `Delete` starts delete confirmation
+| Key | Action |
+|-----|--------|
+| `Up` / `Down` / `K` / `J` | Navigate |
+| `Right` / `L` / `Enter` | Open / expand |
+| `Left` / `H` | Collapse / parent |
+| `Delete` | Delete (with confirmation) |
 
-### Mouse
+</details>
 
-- Click file/folder in tree to open/toggle
-- Drag pane divider to resize (persisted)
-- Right-click tree item for context menu (New File, Rename, Delete, etc.)
-- Left-click + drag in editor selects text
-- Right-click in editor for edit menu (Copy, Cut, Paste, Select All)
-- Click fold gutter icons to toggle folds
-- Shift+scroll horizontally when word wrap is off
+<details>
+<summary>Mouse</summary>
 
-### Custom Keybindings
+- Click file/folder in tree to open
+- Drag divider to resize panes
+- Right-click tree for context menu (New File, Rename, Delete)
+- Click + drag in editor to select text
+- Right-click editor for edit menu
+- Click gutter fold icons to toggle folds
+- Shift+scroll to pan horizontally
 
-All keyboard shortcuts can be remapped via `~/.config/lazyide/keybinds.json`. Only include the keys you want to override — missing actions keep their defaults.
+</details>
+
+<details>
+<summary>Custom keybindings</summary>
+
+Override any shortcut in `~/.config/lazyide/keybinds.json`:
 
 ```json
 {
@@ -179,28 +170,36 @@ All keyboard shortcuts can be remapped via `~/.config/lazyide/keybinds.json`. On
 }
 ```
 
-Values are a single string or array of strings. Keys are snake_case action names (e.g. `save`, `close_tab`, `go_to_definition`, `dup_line_down`, `toggle_word_wrap`).
+Or use the in-app keybind editor: `Ctrl+P` > "Keybind Editor"
 
-You can also open the **Keybind Editor** from the command palette (`Ctrl+P` > "Keybind Editor") to browse, remap, and reset keybindings interactively. Conflict detection warns you if a key is already in use.
+</details>
 
-### Unsaved safety
+## Build from source
 
-- `Ctrl+Q` twice to quit with unsaved changes
-- Closing a dirty tab prompts: `Enter` save+close, `Esc` discard, `C` cancel
+```bash
+cargo build --release
+cargo run -- /path/to/project
+cargo test
+```
 
-### Autosave & recovery
+Requires Rust 2024 edition.
 
-- Dirty buffers autosave every 2 seconds
-- Recovery prompt on reopen if autosave exists
-- Conflict prompt if file changes on disk while buffer is dirty: `R` reload, `K` keep local, `D` decide later
+## Optional tools
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| [rust-analyzer](https://rust-analyzer.github.io/manual.html#installation) | LSP completions, diagnostics, go-to-definition | `lazyide --setup` |
+| [ripgrep](https://github.com/BurntSushi/ripgrep#installation) | Project-wide search | `lazyide --setup` |
+| git | Branch display, gutter markers | System package manager |
 
 ## Documentation
 
-See the [docs/](docs/) directory for contributor guides:
-
 - [Architecture](docs/ARCHITECTURE.md) — module structure, data flow, rendering pipeline
-- [Contributing](CONTRIBUTING.md) — how to submit themes, report bugs, and contribute code
+- [Contributing](CONTRIBUTING.md) — themes, bug reports, code contributions
 
-## Contributing
+## Acknowledgements
 
-Contributions welcome — especially new themes! See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+- [lazygit](https://github.com/jesseduffield/lazygit) and [lazyssh](https://github.com/Adembc/lazyssh) — inspiration for the terminal-native approach
+- [ratatui](https://ratatui.rs) — TUI framework
+- [rust-analyzer](https://rust-analyzer.github.io) — LSP server
+- [ripgrep](https://github.com/BurntSushi/ripgrep) — project search engine
